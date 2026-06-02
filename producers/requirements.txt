@@ -1,0 +1,21 @@
+# Core dependencies
+requests>=2.31.0,<3.0.0
+python-dotenv>=1.0.0
+tenacity>=8.2.0
+pandas>=1.5.0,<3.0.0
+numpy>=1.21.0,<2.0.0
+
+# Kafka client (alternative to kafka-python for Python 3.12)
+confluent-kafka>=2.3.0
+
+# Web scraping
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+feedparser>=6.0.10
+
+# Data processing
+vnstock>=0.2.8.0
+python-dateutil>=2.8.0
+
+# HTTP client
+urllib3>=1.26.0,<3.0.0

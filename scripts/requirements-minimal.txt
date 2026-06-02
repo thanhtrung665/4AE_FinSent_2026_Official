@@ -1,0 +1,21 @@
+# Minimal requirements cho Python 3.12 compatibility
+# Chỉ cài những packages cốt lõi nhất
+
+# Core dependencies
+requests>=2.31.0
+python-dotenv>=1.0.0
+tenacity>=8.2.0
+
+# Kafka client (confluent-kafka thay cho kafka-python)
+confluent-kafka>=2.3.0
+
+# Web scraping (essential only)  
+beautifulsoup4>=4.12.0
+feedparser>=6.0.10
+
+# Data processing (minimal versions)
+pandas>=1.5.0
+numpy>=1.21.0
+
+# Utilities
+python-dateutil>=2.8.0

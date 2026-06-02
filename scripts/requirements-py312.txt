@@ -1,0 +1,26 @@
+# Python 3.12 compatible requirements
+# Updated versions that work with Python 3.12
+
+# Core dependencies with 3.12 compatible versions
+requests>=2.31.0
+python-dotenv>=1.0.0
+tenacity>=8.2.3
+
+# Data processing (3.12 compatible versions)
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Kafka client (already 3.12 compatible)
+confluent-kafka>=2.3.0
+
+# Web scraping (3.12 compatible)
+beautifulsoup4>=4.12.0
+lxml>=4.9.3
+feedparser>=6.0.10
+
+# Market data (might need manual installation)
+# vnstock>=0.2.8.0  # Comment out if causing issues
+
+# Utilities
+python-dateutil>=2.8.2
+urllib3>=2.0.0
