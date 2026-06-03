@@ -2,55 +2,55 @@
 
 ## Overview
 
-This design outlines the implementation of two new Kafka producer modules for the existing data pipeline system: **Market_Data_Producer** for Vietnamese stock market data collection and **Facebook_Mock_Injector** for mock social media data streaming. Both modules will inherit from the existing `BaseKafkaProducer` class to ensure consistent error handling, retry logic, and integration patterns.
+This design outlines the implementation of two specialized Kafka producer modules optimized for AWS t3.large infrastructure: **Market_Data_Producer** for Vietnamese stock market data collection and **Facebook_Mock_Injector** for mock social media data streaming. Both modules inherit from the existing `BaseKafkaProducer` class to ensure consistent error handling, retry logic, and integration patterns specifically tailored for AWS cloud deployment.
 
-The modules will extend the current producers system (which already includes RSS feeders and F319 scrapers) with additional data sources essential for financial sentiment analysis. The Market_Data_Producer will provide real-time Vietnamese stock market data using the vnstock library, while the Facebook_Mock_Injector will simulate social media data streams for testing and development purposes.
+The modules extend the current producers system with additional data sources essential for financial sentiment analysis supporting two distinct case study frameworks: **SHB (Standard Baseline)** covering normal market periods (01/01/2026 to 01/06/2026), and **SCB (Systemic Crisis Event)** covering crisis periods (01/09/2022 to 31/12/2022). The Market_Data_Producer provides real-time Vietnamese stock market data using the vnstock library, while the Facebook_Mock_Injector simulates social media data streams for comprehensive testing scenarios.
+
+The system is specifically designed to operate within AWS t3.large instance specifications (2 vCPU, 8GB RAM) and integrates seamlessly with the four core Kafka topics: `news_rss_data`, `f319_data`, `fb_mock_data`, and `market_stock_data`.
 
 ## Architecture
 
-### System Integration
+### AWS Cloud Integration
 
-The new producers integrate into the existing multi-threaded data pipeline architecture managed by `DataPipelineManager`. The system follows a producer-consumer pattern where:
-
-1. **Producers** collect data from various sources
-2. **Kafka** acts as the message broker for data distribution
-3. **Consumers** (multi-agent system, NLP engine) process the streamed data
+The producer modules are architected for native AWS deployment, leveraging t3.large instance specifications for optimal performance:
 
 ```mermaid
 graph TB
-    subgraph "Data Sources"
-        A[vnstock API<br/>Vietnamese Market Data]
-        B[facebook_mock.csv<br/>Mock Social Data]
-        C[RSS Feeds<br/>Financial News]
-        D[F319 Forum<br/>Discussion Data]
+    subgraph "AWS t3.large Instance (2 vCPU, 8GB RAM)"
+        subgraph "Data Sources"
+            A[vnstock API<br/>Vietnamese Market Data]
+            B[facebook_mock.csv<br/>Mock Social Data]
+            C[RSS Feeds<br/>Financial News]
+            D[F319 Forum<br/>Discussion Data]
+        end
+
+        subgraph "Kafka Producer Modules"
+            E[Market_Data_Producer<br/>SHB/SCB Context]
+            F[Facebook_Mock_Injector<br/>SHB/SCB Context] 
+            G[RSS_Feeder]
+            H[F319_Scraper]
+        end
+
+        subgraph "BaseKafkaProducer (AWS Optimized)"
+            I[AWS Kafka Connection<br/>Port 9092]
+            J[Exponential Backoff Retry]
+            K[CloudWatch Integration]
+            L[Standard_JSON Serialization]
+        end
+
+        subgraph "Four Core Kafka Topics"
+            M[market_stock_data<br/>Single Partition]
+            N[fb_mock_data<br/>Single Partition]
+            O[news_rss_data<br/>Single Partition]
+            P[f319_data<br/>Single Partition]
+        end
     end
 
-    subgraph "Kafka Producer Modules"
-        E[Market_Data_Producer]
-        F[Facebook_Mock_Injector] 
-        G[RSS_Feeder]
-        H[F319_Scraper]
-    end
-
-    subgraph "BaseKafkaProducer"
-        I[Retry Logic]
-        J[Error Handling]
-        K[Health Checks]
-        L[Message Serialization]
-    end
-
-    subgraph "Kafka Topics"
-        M[market_stock_data]
-        N[fb_mock_data]
-        O[news_rss_data]
-        P[f319_data]
-    end
-
-    subgraph "Data Pipeline Manager"
-        Q[Thread Management]
-        R[Configuration Management]
-        S[Health Monitoring]
-        T[Signal Handling]
+    subgraph "AWS Infrastructure Services"
+        Q[Kafka Broker<br/>KAFKA_HEAP_OPTS="-Xmx2G -Xms2G"]
+        R[ChromaDB Service<br/>Port 8000]
+        S[Security Groups<br/>Ports 22, 8000, 9092]
+        T[EBS Storage<br/>Persistent Volumes]
     end
 
     A --> E
@@ -68,52 +68,74 @@ graph TB
     G --> O
     H --> P
 
-    Q --> E
-    Q --> F
-    Q --> G
-    Q --> H
+    M --> Q
+    N --> Q
+    O --> Q
+    P --> Q
 
-    R --> E
-    R --> F
-    R --> G
-    R --> H
+    Q --> R
+    Q --> T
+    S --> Q
+    S --> R
 ```
 
-### Inheritance Structure
+### Case Study Framework Integration
 
-Both new producers inherit from `BaseKafkaProducer`, ensuring consistent behavior:
+The system supports two distinct analytical frameworks with proper ticker context tagging:
+
+**SHB (Standard Baseline) - Normal Market Period:**
+- Timeline: 01/01/2026 to 01/06/2026
+- Ticker Context: `"SHB"`
+- Purpose: Establish mathematical baseline against market volatility
+- Data Sources: VNINDEX baseline data, normal social sentiment
+
+**SCB (Systemic Crisis Event) - Crisis Period:**
+- Timeline: 01/09/2022 to 31/12/2022  
+- Ticker Context: `"SCB"`
+- Purpose: Analyze systemic contagion patterns
+- Data Sources: VNINDEX/STB crisis proxies, crisis social sentiment
+
+### Producer Architecture Pattern
 
 ```mermaid
 classDiagram
     class BaseKafkaProducer {
         +topic: str
-        +kafka_broker: str
+        +kafka_broker: str (AWS Endpoint)
         +producer: Producer
-        +logger: Logger
+        +logger: Logger (CloudWatch)
+        +security_config: Dict
         +send_message(message, key)
         +send_batch(messages)
         +health_check()
+        +aws_retry_logic()
         +close()
     }
 
     class MarketDataProducer {
         +interval_seconds: int
         +tickers: List[str]
+        +ticker_context: str (SHB/SCB)
+        +aws_optimized_collection: bool
         +previous_data: Dict
         +get_market_data(ticker)
         +collect_all_tickers()
         +run_market_data_collection()
         +test_vnstock_connection()
+        +validate_shb_scb_context()
     }
 
     class FacebookMockInjector {
         +csv_file_path: str
         +delay_seconds: float
+        +ticker_context: str (SHB/SCB)
+        +aws_batch_mode: bool
         +processed_ids: Set
         +read_csv_data()
         +stream_csv_data()
         +run_mock_injection()
         +validate_csv_format()
+        +apply_context_tagging()
     }
 
     BaseKafkaProducer <|-- MarketDataProducer
@@ -122,80 +144,93 @@ classDiagram
 
 ## Components and Interfaces
 
-### Market_Data_Producer
+### Market_Data_Producer (AWS Optimized)
 
-**Purpose:** Collect Vietnamese stock market data (VNINDEX, VN30) from vnstock library and stream to Kafka.
+**Purpose:** Collect Vietnamese stock market data optimized for AWS t3.large infrastructure with SHB/SCB context tagging.
 
-**Key Components:**
-- **Data Collector:** Interfaces with vnstock API to fetch market data
-- **Data Parser:** Converts vnstock responses to standardized JSON format  
-- **Change Detector:** Compares current data with previous to avoid duplicate sends
-- **Scheduler:** Manages collection intervals (default 60 seconds)
+**AWS-Specific Optimizations:**
+- **Memory Management:** Configured for t3.large 8GB RAM with optimized data caching
+- **Network Optimization:** AWS-specific connection pooling for vnstock API calls
+- **Context-Aware Collection:** Automatic SHB/SCB context tagging based on timeline
+- **CloudWatch Integration:** Direct integration with AWS monitoring services
 
 **Public Interface:**
 ```python
 class MarketDataProducer(BaseKafkaProducer):
-    def __init__(self) -> None
+    def __init__(self, ticker_context: str = "SHB") -> None
     def get_market_data(self, ticker: str) -> Optional[Dict[str, Any]]
     def collect_all_tickers(self) -> List[Dict[str, Any]]
     def collect_once(self) -> Dict[str, int]
     def run_market_data_collection(self) -> None
     def test_vnstock_connection(self) -> bool
     def get_available_indices(self) -> List[str]
+    def validate_shb_scb_context(self) -> bool
+    def get_aws_health_metrics(self) -> Dict[str, Any]
 ```
 
-**Configuration:**
-- `MARKET_DATA_INTERVAL_SECONDS`: Collection interval (default: 60)
-- `VNSTOCK_TICKERS`: Comma-separated list of tickers (default: "VNINDEX,VN30")
+**AWS-Optimized Configuration:**
+- `MARKET_DATA_INTERVAL_SECONDS`: Collection interval optimized for t3.large (default: 60)
+- `VNSTOCK_TICKERS`: Context-aware ticker list (default: "VNINDEX,VN30,STB")
+- `TICKER_CONTEXT`: SHB or SCB context (default: "SHB")
+- `AWS_KAFKA_ENDPOINT`: AWS-specific Kafka broker endpoint
+- `AWS_MEMORY_OPTIMIZATION`: Enable t3.large memory optimization (default: true)
 
-### Facebook_Mock_Injector
+### Facebook_Mock_Injector (AWS Enhanced)
 
-**Purpose:** Stream mock Facebook data from CSV file to simulate social media data for testing.
+**Purpose:** Stream mock Facebook data with SHB/SCB context tagging, optimized for AWS deployment.
 
-**Key Components:**
-- **CSV Reader:** Reads and validates CSV file structure
-- **Data Parser:** Converts CSV rows to JSON format with metadata
-- **Stream Simulator:** Implements delays between messages to simulate real-time streaming
-- **Loop Controller:** Handles continuous streaming with restart capability
+**AWS-Specific Features:**
+- **Batch Processing:** Optimized batch mode for AWS instance performance
+- **Context Injection:** Automatic SHB/SCB context tagging in JSON payloads
+- **EBS Integration:** Optimized CSV file reading from AWS EBS storage
+- **CloudWatch Metrics:** Real-time streaming metrics to CloudWatch
 
 **Public Interface:**
 ```python
 class FacebookMockInjector(BaseKafkaProducer):
-    def __init__(self) -> None
+    def __init__(self, ticker_context: str = "SHB") -> None
     def read_csv_data(self) -> List[Dict[str, Any]]
     def stream_csv_data(self) -> Iterator[Dict[str, Any]]
     def inject_once(self) -> Dict[str, int]
     def run_mock_injection(self, loop_count: int, loop_delay_minutes: int) -> None
     def validate_csv_format(self) -> bool
     def get_csv_info(self) -> Dict[str, Any]
+    def apply_context_tagging(self, data: Dict[str, Any]) -> Dict[str, Any]
+    def get_aws_batch_metrics(self) -> Dict[str, Any]
 ```
 
-**Configuration:**
-- `FB_MOCK_FILE_PATH`: Path to CSV file (default: "facebook_mock.csv")
-- `FB_MOCK_STREAM_DELAY`: Delay between messages (default: 1.0)
+**AWS-Enhanced Configuration:**
+- `FB_MOCK_FILE_PATH`: EBS-optimized path (default: "/data/facebook_mock.csv")
+- `FB_MOCK_STREAM_DELAY`: AWS-optimized delay (default: 1.0)
+- `TICKER_CONTEXT`: SHB or SCB context (default: "SHB")
+- `AWS_BATCH_SIZE`: Batch processing size for t3.large (default: 100)
+- `AWS_EBS_OPTIMIZATION`: Enable EBS read optimization (default: true)
 
-### BaseKafkaProducer Integration
+### BaseKafkaProducer AWS Integration
 
-Both producers leverage the shared functionality from `BaseKafkaProducer`:
+Enhanced with AWS-specific capabilities:
 
-**Retry Logic:**
-- Exponential backoff with configurable attempts (default: 5)
-- Automatic retry on `KafkaException`, `ConnectionError`, `OSError`
-- Graceful degradation on persistent failures
+**AWS Connection Management:**
+- Dynamic AWS Kafka broker endpoint resolution
+- AWS Security Group compliance for port 9092
+- AWS Elastic IP binding for KAFKA_ADVERTISED_LISTENERS
+- IAM role-based authentication support
 
-**Error Handling:**
-- Comprehensive logging of all operations and errors
-- Specific error types for different failure modes
-- Health check integration for monitoring
+**AWS Error Handling:**
+- AWS-specific retry logic with exponential backoff
+- CloudWatch error logging integration
+- AWS network failure detection and recovery
+- EBS storage failure resilience
 
-**Message Delivery:**
-- Asynchronous message sending with delivery callbacks
-- Batch sending capability for multiple messages
-- Message serialization with timestamp injection
+**AWS Monitoring Integration:**
+- CloudWatch metrics publishing
+- AWS health check integration
+- Performance metrics for t3.large optimization
+- Cost optimization tracking
 
 ## Data Models
 
-### Market Data JSON Schema
+### Market Data JSON Schema (AWS Enhanced)
 
 ```json
 {
@@ -207,19 +242,23 @@ Both producers leverage the shared functionality from `BaseKafkaProducer`:
   "close": 1249.88,
   "volume": 15420000,
   "data_source": "vnstock",
-  "collection_timestamp": "2024-01-15T15:31:00+00:00"
+  "collection_timestamp": "2024-01-15T15:31:00+00:00",
+  "ticker_context": "SHB",
+  "aws_instance_id": "i-1234567890abcdef0",
+  "processing_metrics": {
+    "memory_usage_mb": 256,
+    "cpu_usage_percent": 15.2,
+    "network_latency_ms": 45
+  }
 }
 ```
 
-**Field Descriptions:**
-- `ticker`: Stock/index symbol (VNINDEX, VN30, etc.)
-- `timestamp`: Market data timestamp from source
-- `open/high/low/close`: Price values in VND
-- `volume`: Trading volume
-- `data_source`: Always "vnstock" for identification
-- `collection_timestamp`: When data was collected by producer
+**Enhanced Field Descriptions:**
+- `ticker_context`: Either "SHB" (Standard Baseline) or "SCB" (Systemic Crisis Event)
+- `aws_instance_id`: AWS EC2 instance identifier for tracking
+- `processing_metrics`: t3.large performance metrics for optimization
 
-### Facebook Mock Data JSON Schema
+### Facebook Mock Data JSON Schema (Context-Enhanced)
 
 ```json
 {
@@ -230,224 +269,312 @@ Both producers leverage the shared functionality from `BaseKafkaProducer`:
   "row_index": 0,
   "stream_index": 0,
   "injection_timestamp": "2024-01-15T16:00:00+00:00",
-  "stream_timestamp": "2024-01-15T16:00:01+00:00"
+  "stream_timestamp": "2024-01-15T16:00:01+00:00",
+  "ticker_context": "SHB",
+  "sentiment_period": "standard_baseline",
+  "aws_batch_id": "batch_001",
+  "processing_metrics": {
+    "memory_usage_mb": 128,
+    "batch_processing_time_ms": 250,
+    "ebs_read_time_ms": 12
+  }
 }
 ```
 
-**Field Descriptions:**
-- `comment_id`: Unique identifier from CSV
-- `content_text`: Comment content in Vietnamese
-- `created_at`: Original creation timestamp from CSV
-- `likes`: Engagement metric from CSV
-- `row_index`: CSV row number for tracking
-- `stream_index`: Position in current streaming session
-- `injection_timestamp`: When record was processed
-- `stream_timestamp`: When record was streamed
+**Context-Specific Field Descriptions:**
+- `ticker_context`: "SHB" for normal periods, "SCB" for crisis periods
+- `sentiment_period`: Human-readable period description
+- `aws_batch_id`: AWS batch processing identifier
+- `processing_metrics`: AWS-specific performance tracking
 
-### CSV File Format
+### CSV File Format (Context-Aware)
 
-The `facebook_mock.csv` file must contain these columns:
+The `facebook_mock.csv` file structure for SHB/SCB scenarios:
 
-| Column | Type | Description | Example |
-|--------|------|-------------|---------|
-| comment_id | string | Unique identifier | "fb_001" |
-| content_text | string | Vietnamese text content | "Thị trường tăng mạnh!" |
-| created_at | datetime | Creation timestamp | "2024-01-15 09:30:00" |
-| likes | integer | Number of likes | 15 |
+| Column | Type | Description | SHB Example | SCB Example |
+|--------|------|-------------|-------------|-------------|
+| comment_id | string | Unique identifier | "shb_001" | "scb_001" |
+| content_text | string | Vietnamese sentiment text | "Thị trường ổn định" | "Thị trường sụp đổ!" |
+| created_at | datetime | Context-appropriate timestamp | "2026-01-15 09:30:00" | "2022-09-15 14:45:00" |
+| likes | integer | Engagement metric | 15 | 143 |
+| period_context | string | SHB or SCB indicator | "SHB" | "SCB" |
 
 ## Correctness Properties
 
 *A property is a characteristic or behavior that should hold true across all valid executions of a system-essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
 
-### Property 1: Market Data JSON Format Consistency
+### Property 1: AWS Kafka Broker Connection Consistency
 
-*For any* market data collected from vnstock, the JSON output SHALL contain all required fields (ticker, timestamp, open, high, low, close, volume, data_source, collection_timestamp) with correct data types
+*For any* environment configuration provided to Market_Data_Producer or Facebook_Mock_Injector, the system SHALL successfully establish AWS Kafka broker connections on port 9092 when configuration is valid
 
-**Validates: Requirements 1.4**
+**Validates: Requirements 1.2, 2.1**
 
-### Property 2: Error Handling Consistency
+### Property 2: Standard JSON Format Consistency
 
-*For any* error condition encountered by either producer, the system SHALL consistently apply BaseKafkaProducer retry logic and error handling mechanisms
+*For any* market data collected from vnstock or CSV data processed by Facebook_Mock_Injector, the JSON output SHALL contain all required Standard_JSON fields with correct data types and proper ticker_context tagging
 
-**Validates: Requirements 1.6, 2.8, 4.1**
+**Validates: Requirements 1.5, 2.4**
 
-### Property 3: Logging Coverage Completeness
+### Property 3: SHB/SCB Context Tagging Completeness
 
-*For any* operation performed by either producer (success or failure), appropriate log entries SHALL be generated with consistent format and detail level
+*For any* data message published by either producer, the JSON payload SHALL contain explicit ticker_context field set to either "SHB" or "SCB" based on configured context
 
-**Validates: Requirements 1.7, 4.2, 4.3, 4.6**
+**Validates: Requirements 1.5, 2.4**
 
-### Property 4: CSV to JSON Transformation
+### Property 4: AWS Health Check Accuracy
 
-*For any* valid CSV row with required columns, the Facebook_Mock_Injector SHALL convert it to JSON format preserving all data while adding required metadata fields
+*For any* connection state (successful or failed), the health check methods SHALL return accurate boolean responses reflecting actual AWS Kafka broker and external API connectivity status
 
-**Validates: Requirements 2.4**
+**Validates: Requirements 6.1, 6.2, 6.3**
 
-### Property 5: CSV Format Validation
+### Property 5: CSV Validation and Error Handling Consistency
 
-*For any* CSV file provided to Facebook_Mock_Injector, the validation SHALL correctly identify whether all required columns (comment_id, content_text, created_at, likes) are present
+*For any* CSV file state (valid, missing, corrupted, wrong permissions), the Facebook_Mock_Injector SHALL consistently apply validation logic and appropriate error handling responses
 
-**Validates: Requirements 2.3**
+**Validates: Requirements 2.2, 3.2, 3.3, 5.3**
 
-### Property 6: Health Check Specificity
+### Property 6: Retry Mechanism Reliability
 
-*For any* health check failure condition, the system SHALL provide specific error information in logs that identifies the root cause
+*For any* AWS network failure scenario (timeout, connection error, broker unavailable), the system SHALL consistently apply exponential backoff retry mechanisms with proper failure recovery
 
-**Validates: Requirements 5.6**
+**Validates: Requirements 5.1, 5.2**
+
+### Property 7: Configuration Parameter Handling
+
+*For any* configuration scenario (complete, missing parameters, invalid values), the system SHALL handle parameters consistently using documented default values when appropriate
+
+**Validates: Requirements 4.3, 4.4**
+
+### Property 8: Logging Completeness and Format Consistency
+
+*For any* system operation (success, failure, warning), the logging output SHALL maintain consistent format with complete processing metrics suitable for AWS CloudWatch integration
+
+**Validates: Requirements 3.4, 5.4, 6.3**
 
 ## Error Handling
 
-### Market_Data_Producer Error Scenarios
+### AWS-Optimized Error Handling
 
-**vnstock API Failures:**
-- Connection timeout: Retry with exponential backoff
-- Invalid response: Log warning, skip current cycle
-- API rate limiting: Implement respectful delays
-- Data parsing errors: Log error details, continue with next ticker
+**Market_Data_Producer AWS-Specific Errors:**
 
-**Implementation:**
+**AWS Kafka Connection Failures:**
+- Connection timeout to AWS broker: Implement AWS-specific exponential backoff
+- Security Group restrictions: Log specific port/IP details with resolution guidance
+- IAM permission issues: Provide detailed AWS credential troubleshooting steps
+- KAFKA_ADVERTISED_LISTENERS binding failures: Dynamic Elastic IP resolution
+
 ```python
-@retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=2, max=10))
-def get_market_data(self, ticker: str) -> Optional[Dict[str, Any]]:
+@retry(
+    stop=stop_after_attempt(5), 
+    wait=wait_exponential(multiplier=2, min=4, max=60),
+    retry=retry_if_exception_type((KafkaException, ConnectionError, OSError))
+)
+def establish_aws_kafka_connection(self) -> bool:
     try:
-        # vnstock API call
-        df = stock.stock_historical_data(...)
-        return self._parse_market_record(df.iloc[0], ticker)
+        # AWS-specific Kafka connection logic
+        self.producer = Producer({
+            'bootstrap.servers': self.aws_kafka_endpoint,
+            'security.protocol': 'PLAINTEXT',  # or SASL_SSL for production
+            'client.id': f'{self.aws_instance_id}-market-producer'
+        })
+        return True
     except Exception as e:
-        self.logger.error(f"Error fetching market data for {ticker}: {e}")
-        raise  # Let retry decorator handle it
+        self.logger.error(f"AWS Kafka connection failed: {e}")
+        if "security.group" in str(e).lower():
+            self.logger.error("Check AWS Security Group allows port 9092")
+        raise
 ```
 
-**Data Validation Errors:**
-- Invalid price data (negative, zero): Log warning, skip record
-- Missing timestamps: Use current time as fallback
-- Volume data issues: Default to 0, log warning
+**vnstock API Integration Errors:**
+- API rate limiting: Implement respectful delays with AWS CloudWatch monitoring
+- Vietnamese market hours: Time-zone aware collection scheduling
+- Data parsing errors: Enhanced logging with Vietnamese text handling
 
-### Facebook_Mock_Injector Error Scenarios
+**AWS Resource Optimization Errors:**
+- Memory pressure on t3.large: Automatic data caching optimization
+- CPU utilization warnings: Collection interval auto-adjustment
+- EBS I/O throttling: Optimized file access patterns
 
-**File System Errors:**
-- Missing CSV file: Create sample file, log info message
-- Corrupted CSV: Log detailed error, terminate gracefully
-- Permission issues: Log specific error, suggest solutions
-- Encoding problems: Try multiple encodings, fallback to UTF-8
+### Facebook_Mock_Injector AWS Error Handling
 
-**Implementation:**
+**EBS Storage Integration Errors:**
+- EBS volume not mounted: Detailed mount troubleshooting guidance
+- EBS I/O performance issues: Automatic batch size adjustment
+- CSV file corruption detection: Enhanced validation with recovery suggestions
+
 ```python
-def read_csv_data(self) -> List[Dict[str, Any]]:
+def read_csv_with_aws_optimization(self) -> List[Dict[str, Any]]:
     try:
-        df = pd.read_csv(self.csv_file_path, encoding='utf-8')
-    except UnicodeDecodeError:
-        for encoding in ['utf-8-sig', 'cp1252', 'latin1']:
-            try:
-                df = pd.read_csv(self.csv_file_path, encoding=encoding)
-                self.logger.info(f"Successfully read CSV with {encoding} encoding")
-                break
-            except:
-                continue
+        # EBS-optimized CSV reading
+        df = pd.read_csv(
+            self.csv_file_path, 
+            encoding='utf-8',
+            chunksize=self.aws_batch_size if self.aws_batch_mode else None
+        )
+        
+        if self.aws_batch_mode:
+            # Process in batches for t3.large memory optimization
+            processed_data = []
+            for chunk in df:
+                processed_data.extend(self.process_csv_chunk(chunk))
+            return processed_data
         else:
-            raise ValueError("Could not read CSV with any supported encoding")
+            return self.process_csv_chunk(df)
+            
+    except pd.errors.EmptyDataError:
+        self.logger.warning("Empty CSV file detected, creating sample data")
+        self.create_sample_csv_file()
+        raise
+    except Exception as e:
+        self.logger.error(f"AWS EBS CSV read error: {e}")
+        if "permission denied" in str(e).lower():
+            self.logger.error("Check EBS volume permissions and mount status")
+        raise
 ```
 
-**Data Processing Errors:**
-- Invalid datetime formats: Try multiple parsers, fallback to current time
-- Missing required columns: Log error, provide specific missing column names
-- Empty CSV file: Log warning, suggest sample data creation
+**Context Tagging Errors:**
+- Invalid ticker_context values: Automatic validation and correction
+- Missing context in CSV data: Intelligent context inference from timestamps
+- Context mismatch warnings: Detailed logging with resolution suggestions
 
-### Shared Error Handling (BaseKafkaProducer)
+### Shared AWS Infrastructure Error Handling
 
-Both producers inherit robust error handling from `BaseKafkaProducer`:
+**AWS Network and Security Errors:**
+- Security Group misconfiguration: Automated port and IP validation
+- VPC connectivity issues: Enhanced networking diagnostics
+- Elastic IP binding problems: Dynamic endpoint resolution
 
-**Kafka Connection Errors:**
-- Broker unavailable: Retry connection with exponential backoff
-- Topic not found: Log error with topic name, suggest topic creation
-- Authentication failures: Log specific auth error, check configuration
-
-**Message Delivery Errors:**
-- Serialization failures: Log message structure, provide format guidance
-- Timeout errors: Increase timeout, retry with backoff
-- Partition errors: Log partition details, continue with default partition
+**AWS Monitoring and Logging Errors:**
+- CloudWatch integration failures: Fallback to local logging with sync retry
+- Metrics publishing errors: Batch metrics with error recovery
+- Log retention policy conflicts: Automatic policy adjustment recommendations
 
 ## Testing Strategy
 
-### Dual Testing Approach
+### AWS Cloud Testing Approach
 
-The testing strategy combines unit tests for specific behaviors with property-based tests for comprehensive coverage:
+The testing strategy is specifically designed for AWS t3.large deployment with comprehensive cloud integration validation:
 
 **Unit Tests Focus:**
-- Class inheritance verification (isinstance checks)
-- Environment variable configuration
-- Mock integrations with external dependencies
-- Specific error handling scenarios
-- Health check implementations
+- AWS configuration validation and environment setup
+- SHB/SCB context tagging verification
+- t3.large resource optimization validation
+- AWS Security Group compliance testing
+- CloudWatch integration verification
 
 **Property Tests Focus:**
-- Data format consistency across various inputs
-- Error handling consistency across failure types
-- Logging completeness for all operations
-- CSV parsing robustness with diverse file formats
+- AWS connection reliability across various network conditions
+- Data format consistency with ticker_context requirements
+- Error handling consistency for AWS-specific failure scenarios
+- Resource utilization optimization across different data loads
 
 ### Property-Based Testing Configuration
 
-Using Hypothesis for Python property-based testing:
-- **Minimum 100 iterations** per property test
-- **Custom generators** for market data and CSV structures
-- **Tagged test references** to design properties
+Enhanced for AWS deployment with comprehensive cloud scenario coverage:
 
-**Example Property Test:**
+**AWS-Specific Test Generators:**
 ```python
-from hypothesis import given, strategies as st
+import hypothesis.strategies as st
+from hypothesis import given
 
-@given(st.dictionaries(
-    st.sampled_from(['open', 'high', 'low', 'close', 'volume']),
-    st.floats(min_value=0.01, max_value=10000.0),
-    min_size=5, max_size=5
-))
-def test_market_data_json_format_consistency(self, market_data):
-    """Feature: kafka-producer-modules, Property 1: Market Data JSON Format Consistency"""
+@st.composite
+def aws_environment_configs(draw):
+    """Generate various AWS environment configurations"""
+    return {
+        'AWS_KAFKA_ENDPOINT': draw(st.sampled_from([
+            'localhost:9092',
+            'kafka.us-east-1.amazonaws.com:9092',
+            'invalid-endpoint'
+        ])),
+        'TICKER_CONTEXT': draw(st.sampled_from(['SHB', 'SCB', 'INVALID'])),
+        'AWS_INSTANCE_ID': draw(st.text(min_size=10, max_size=20)),
+        'AWS_MEMORY_OPTIMIZATION': draw(st.booleans())
+    }
+
+@given(aws_environment_configs())
+def test_aws_kafka_connection_consistency(self, config):
+    """Feature: kafka-producer-modules, Property 1: AWS Kafka Broker Connection Consistency"""
     producer = MarketDataProducer()
-    result = producer._parse_market_record(market_data, "VNINDEX")
+    producer.configure_aws_environment(config)
     
-    required_fields = ['ticker', 'timestamp', 'open', 'high', 'low', 'close', 'volume', 'data_source', 'collection_timestamp']
-    assert all(field in result for field in required_fields)
-    assert isinstance(result['close'], (int, float))
-    assert result['data_source'] == 'vnstock'
+    if config['AWS_KAFKA_ENDPOINT'] != 'invalid-endpoint':
+        assert producer.establish_aws_kafka_connection() == True
+    else:
+        with pytest.raises((ConnectionError, KafkaException)):
+            producer.establish_aws_kafka_connection()
 ```
 
-### Test Categories
+**SHB/SCB Context Testing:**
+```python
+@st.composite
+def market_data_with_context(draw):
+    """Generate market data with SHB/SCB context"""
+    context = draw(st.sampled_from(['SHB', 'SCB']))
+    return {
+        'ticker': draw(st.sampled_from(['VNINDEX', 'VN30', 'STB'])),
+        'open': draw(st.floats(min_value=1.0, max_value=5000.0)),
+        'high': draw(st.floats(min_value=1.0, max_value=5000.0)),
+        'low': draw(st.floats(min_value=1.0, max_value=5000.0)),
+        'close': draw(st.floats(min_value=1.0, max_value=5000.0)),
+        'volume': draw(st.integers(min_value=0, max_value=100000000)),
+        'ticker_context': context
+    }
 
-**Market_Data_Producer Tests:**
-- vnstock connection mocking and simulation
-- Market data parsing with various data structures
-- Change detection logic with different data sets
-- Collection scheduling and interval management
-- Error recovery from API failures
+@given(market_data_with_context())
+def test_shb_scb_context_tagging(self, market_data):
+    """Feature: kafka-producer-modules, Property 3: SHB/SCB Context Tagging Completeness"""
+    producer = MarketDataProducer(ticker_context=market_data['ticker_context'])
+    json_output = producer._parse_market_record(market_data, market_data['ticker'])
+    
+    assert 'ticker_context' in json_output
+    assert json_output['ticker_context'] in ['SHB', 'SCB']
+    assert json_output['ticker_context'] == market_data['ticker_context']
+```
 
-**Facebook_Mock_Injector Tests:**
-- CSV file creation and validation
-- Multiple encoding support testing
-- Streaming delay verification
-- Loop restart and continuation behavior
-- Malformed data handling
+### AWS Integration Testing Categories
 
-**Integration Tests:**
-- DataPipelineManager integration
-- Concurrent producer execution  
-- Kafka message delivery verification
-- Health check coordination
-- Signal handling and graceful shutdown
+**AWS Infrastructure Tests:**
+- t3.large resource utilization validation
+- EBS storage integration and performance testing
+- Security Group configuration compliance
+- CloudWatch metrics integration verification
+- AWS network failure simulation and recovery testing
 
-### Testing Dependencies
+**SHB/SCB Scenario Tests:**
+- Standard Baseline period data collection accuracy
+- Systemic Crisis Event data pattern recognition
+- Context switching between SHB and SCB modes
+- Historical timeline data accuracy validation
 
-**Required Test Dependencies:**
+**Performance Optimization Tests:**
+- Memory usage optimization on t3.large instances
+- CPU utilization monitoring and adjustment
+- Network latency optimization for AWS deployment
+- Batch processing efficiency for large datasets
+
+### Testing Dependencies for AWS Deployment
+
+**Enhanced Test Dependencies:**
 ```
 pytest>=7.0.0
 hypothesis>=6.0.0
 pytest-mock>=3.6.0
 pytest-asyncio>=0.21.0
+moto>=4.0.0  # AWS mocking
+boto3>=1.26.0  # AWS SDK
+docker>=6.0.0  # Container testing
+pytest-cov>=4.0.0  # Coverage reporting
 ```
 
-**Mock Strategies:**
-- **vnstock API**: Mock responses with realistic market data
-- **Kafka Producer**: Mock message delivery and error conditions
-- **File System**: Mock CSV file operations and permissions
-- **Time/Scheduling**: Mock sleep and interval functions for fast testing
+**AWS Mock Strategies:**
+- **AWS Services**: Mock Kafka, CloudWatch, EBS using moto library
+- **Network Conditions**: Simulate various AWS network failure scenarios
+- **Resource Constraints**: Mock t3.large resource limitations
+- **Time/Timeline**: Mock SHB/SCB historical period data
+- **Vietnamese Market Data**: Mock vnstock API responses with realistic data
+
+**Continuous Integration for AWS:**
+- Automated testing on AWS CodeBuild with t3.large simulation
+- Integration testing with actual AWS services in staging environment
+- Performance benchmarking against t3.large resource specifications
+- Security testing for AWS Security Group compliance

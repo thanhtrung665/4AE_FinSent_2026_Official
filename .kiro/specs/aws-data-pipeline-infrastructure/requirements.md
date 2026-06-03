@@ -1,150 +1,102 @@
-# Requirements Document
-
+# Requirements Document - AWS Data Pipeline Infrastructure
 ## Introduction
 
-The AWS Data Pipeline Infrastructure provides a complete containerized data processing pipeline deployable on AWS EC2 infrastructure. The system includes a single Apache Kafka broker for data streaming, ChromaDB for vector storage, and comprehensive monitoring capabilities, designed for development and testing environments with optimized single-node configuration.
+The AWS Data Pipeline Infrastructure provides a complete containerized data processing pipeline natively deployable on AWS EC2 production-ready infrastructure. The system is engineered to handle parallel historical streaming data for comparative asset analysis—specifically evaluating standard market baselines against extreme systemic crisis events. The infrastructure includes a single Apache Kafka broker optimized for low-latency message streaming, ChromaDB for high-performance vector storage, and an isolated container network, ensuring absolute data integrity under multi-source loads.
 
 ## Glossary
 
-- **Data_Pipeline_System**: The complete containerized infrastructure including Kafka, ChromaDB, and monitoring components
-- **Kafka_Broker**: Single-broker Apache Kafka deployment optimized for single-node environments
-- **ChromaDB_Service**: Vector database service for embeddings and semantic search capabilities
-- **Zookeeper_Service**: Coordination service for Kafka broker management
-- **Deploy_Script**: Automated deployment script for Docker installation and system setup
-- **Security_Group**: AWS network security configuration controlling inbound and outbound traffic
-- **Docker_Compose**: Container orchestration configuration defining all services and dependencies
-- **Monitoring_Stack**: Operational monitoring and logging infrastructure
-- **EC2_Instance**: AWS virtual machine with t3.medium specifications (2 vCPU, 4GB RAM)
-- **Remote_Access**: External network connectivity to Kafka broker from client applications
+- **Data_Pipeline_System**: The complete containerized infrastructure including Kafka, ChromaDB, and core networking components running on AWS.
+- **Kafka_Broker**: Single-broker Apache Kafka deployment optimized for streaming financial news and time-series transactional data.
+- **ChromaDB_Service**: Isolated vector database service providing storage, indexing, and semantic search capabilities for macroeconomic policy documents.
+- **Zookeeper_Service**: Distributed coordination service for Kafka broker metadata and cluster state management.
+- **Deploy_Script**: Automated Bash deployment script for multi-component Docker installation, volume provisioning, and health validation.
+- **Security_Group**: AWS virtual firewall controlling inbound and outbound instance traffic to secure data pipelines from unauthorized external mutations.
+- **Docker_Compose**: Multi-container orchestration specification defining production-ready configurations, health checks, and service dependencies.
+- **EC2_Instance**: AWS virtual machine host configured with t3.large hardware specifications (2 vCPU, 8GB RAM) to maintain system reliability during heavy NLP execution blocks.
+- **Standard_JSON**: Strict JavaScript Object Notation format used universally across message payloads and database metadata fields, ensuring absolute compatibility with downstream systems.
+
+---
 
 ## Requirements
 
 ### Requirement 1: Container Orchestration Infrastructure
 
-**User Story:** As a DevOps engineer, I want a complete Docker Compose configuration, so that I can deploy the entire data pipeline with a single command.
+**User Story:** As a DevOps engineer, I want a complete Docker Compose configuration optimized for AWS t3.large, so that I can deploy the entire data pipeline with automated volume isolation and strict service dependency chains.
 
 #### Acceptance Criteria
 
-1. THE Data_Pipeline_System SHALL provide a docker-compose.yml file defining all required services
-2. THE Docker_Compose SHALL configure Zookeeper_Service as a dependency for Kafka_Broker
-3. THE Docker_Compose SHALL define Kafka_Broker as a single instance optimized for t3.medium
-4. THE Docker_Compose SHALL configure ChromaDB_Service on port 8000
-5. THE Docker_Compose SHALL configure Kafka_Broker primary access on port 9092
-6. THE Docker_Compose SHALL include persistent volume configurations for data retention
-7. THE Docker_Compose SHALL define network isolation between services
+1. **THE Data_Pipeline_System SHALL** provide a `docker-compose.yml` file defining all required services natively running on the AWS infrastructure.
+2. **THE Docker_Compose SHALL** configure `Zookeeper_Service` as a strict dependency and health checkpoint for `Kafka_Broker` initialization.
+3. **THE Docker_Compose SHALL** allocate isolated, persistent Docker volumes for Kafka broker logs and ChromaDB vector collections to prevent data wipe during container recreation.
+4. **THE Docker_Compose SHALL** map `ChromaDB_Service` to external port `8000` and `Kafka_Broker` primary listener to external port `9092`.
+5. **THE Docker_Compose SHALL** implement an isolated custom bridge network ensuring secure, internal communication between all pipeline containers.
+6. **THE Docker_Compose SHALL** enforce restart-on-failure policies across all core microservices to guarantee continuous automated recovery.
 
-### Requirement 2: Kafka Single-Node Configuration
+---
 
-**User Story:** As a data engineer, I want a single Kafka broker optimized for development and testing, so that I can stream data efficiently on limited resources.
+### Requirement 2: Financial Stream & Kafka Multi-Topic Configuration
 
-#### Acceptance Criteria
-
-1. THE Kafka_Broker SHALL deploy as a single instance optimized for t3.medium resources
-2. THE Kafka_Broker SHALL configure KAFKA_HEAP_OPTS="-Xmx1G -Xms1G" to prevent OOM errors
-3. THE Kafka_Broker SHALL enable remote client connectivity via KAFKA_ADVERTISED_LISTENERS
-4. THE Kafka_Broker SHALL configure appropriate log retention policies for development environments
-5. THE Kafka_Broker SHALL enable auto-creation of topics with single partition default
-6. THE Kafka_Broker SHALL optimize configuration for single-node deployment
-7. THE Kafka_Broker SHALL allocate sufficient memory to handle typical development workloads without OOM errors
-
-### Requirement 3: Automated Deployment and Setup
-
-**User Story:** As a system administrator, I want an automated deployment script, so that I can provision the entire infrastructure without manual configuration.
+**User Story:** As a data engineer, I want a single Kafka broker configured with dedicated historical topics for SHB and SCB, so that I can stream multi-source financial texts and price data without cross-contamination.
 
 #### Acceptance Criteria
 
-1. THE Deploy_Script SHALL install Docker Engine if not present on the target system
-2. THE Deploy_Script SHALL install Docker Compose if not present on the target system
-3. THE Deploy_Script SHALL validate system requirements before installation
-4. WHEN Docker installation fails, THE Deploy_Script SHALL provide clear error messages and exit gracefully
-5. THE Deploy_Script SHALL start all services defined in the Docker Compose configuration
-6. THE Deploy_Script SHALL verify service health after deployment
-7. THE Deploy_Script SHALL provide status feedback during installation progress
-8. IF system resources are insufficient, THEN THE Deploy_Script SHALL warn the user and provide recommendations
+1. **THE Kafka_Broker SHALL** run with memory allocations optimized for `t3.large`, setting `KAFKA_HEAP_OPTS="-Xmx2G -Xms2G"` to prevent system-wide Out-Of-Memory (OOM) failures.
+2. **THE Kafka_Broker SHALL** automatically provision four core messaging topics upon initialization: `news_rss_data`, `f319_data`, `fb_mock_data`, and `market_stock_data`.
+3. **THE Kafka_Broker SHALL** enforce a strict single-partition architecture per topic to guarantee absolute chronological message ordering during time-series processing.
+4. **THE data payloads** within `market_stock_data` **SHALL** natively support standard VNStock API inputs for the SHB baseline period (01/01/2026 to 01/06/2026) and the systemic contagion proxies (VNINDEX, STB) for the SCB crisis period (01/09/2022 to 31/12/2022).
+5. **THE data payloads** within `f319_data` and `fb_mock_data` **SHALL** mandate a `Standard_JSON` structure containing explicit `ticker_context` tags (`"SHB"` or `"SCB"`) to prevent data ingestion routing errors.
 
-### Requirement 4: AWS Infrastructure Documentation
+---
 
-**User Story:** As a cloud engineer, I want comprehensive AWS setup documentation, so that I can configure the EC2 environment and network security correctly.
+### Requirement 3: Automated Deployment and AWS Provisioning
 
-#### Acceptance Criteria
-
-1. THE Data_Pipeline_System SHALL provide README_AWS.md with complete setup instructions
-2. THE README_AWS.md SHALL specify EC2_Instance requirements including t3.medium specifications
-3. THE README_AWS.md SHALL document Security_Group configuration for all required ports
-4. THE README_AWS.md SHALL provide IP whitelist configuration instructions
-5. THE README_AWS.md SHALL include step-by-step AWS console configuration procedures
-6. THE README_AWS.md SHALL document firewall rules for Kafka remote access
-7. THE README_AWS.md SHALL include troubleshooting guidance for common deployment issues
-8. THE README_AWS.md SHALL provide performance tuning recommendations for t3.medium instances
-
-### Requirement 5: Network Security and Access Control
-
-**User Story:** As a security engineer, I want proper network access controls, so that only authorized systems can connect to the data pipeline services.
+**User Story:** As a system administrator, I want an automated deployment script tailored for AWS Ubuntu Server, so that I can install Docker dependencies and launch the pipeline without manual setup errors.
 
 #### Acceptance Criteria
 
-1. THE Security_Group SHALL restrict inbound access to specified IP addresses only
-2. THE Security_Group SHALL allow inbound traffic on port 9092 for Kafka client connections
-3. THE Security_Group SHALL allow inbound traffic on port 8000 for ChromaDB access
-4. THE Security_Group SHALL allow inbound traffic on port 22 for SSH administrative access
-5. THE Security_Group SHALL deny all other inbound traffic by default
-6. THE Security_Group SHALL allow all outbound traffic for service dependencies
-7. WHERE Remote_Access is required, THE Kafka_Broker SHALL configure KAFKA_ADVERTISED_LISTENERS with public IP addresses
-8. THE Data_Pipeline_System SHALL support IP whitelist updates without service restart
+1. **THE Deploy_Script SHALL** automatically detect and install Docker Engine and Docker Compose if missing from the host AWS instance.
+2. **THE Deploy_Script SHALL** perform a pre-flight environment check to validate that the host meets the minimum `t3.large` specification (8GB RAM).
+3. **WHEN** host system memory is below 8GB, **THE Deploy_Script SHALL** halt execution, issue a critical resource warning, and output architectural optimization recommendations.
+4. **THE Deploy_Script SHALL** sequentially initialize all services, displaying real-time connectivity status bars for ports `9092` and `8000`.
+5. **THE Deploy_Script SHALL** output a clean deployment report containing active internal container IP mappings and external AWS endpoint verification commands.
 
-### Requirement 6: Service Health and Monitoring
+---
 
-**User Story:** As an operations engineer, I want service health monitoring, so that I can detect and respond to system issues proactively.
+### Requirement 4: AWS Security Architecture & Infrastructure Documentation
 
-#### Acceptance Criteria
-
-1. THE Data_Pipeline_System SHALL include health check endpoints for all services
-2. THE Monitoring_Stack SHALL collect metrics from Kafka_Broker
-3. THE Monitoring_Stack SHALL collect metrics from ChromaDB_Service
-4. WHEN a service becomes unhealthy, THE Monitoring_Stack SHALL log the failure event
-5. THE Data_Pipeline_System SHALL provide service status verification commands
-6. THE Data_Pipeline_System SHALL include log aggregation for troubleshooting
-7. THE Deploy_Script SHALL verify service connectivity after deployment
-8. IF a critical service fails startup, THEN THE Deploy_Script SHALL report the specific failure reason
-
-### Requirement 7: Data Persistence and Recovery
-
-**User Story:** As a data engineer, I want persistent data storage, so that data survives container restarts and system maintenance.
+**User Story:** As a cloud security engineer, I want strict AWS Security Group configurations and deployment guides, so that the pipeline endpoints remain isolated from public web-scraping botnets.
 
 #### Acceptance Criteria
 
-1. THE Kafka_Broker SHALL store topic data in persistent Docker volumes
-2. THE ChromaDB_Service SHALL store vector data in persistent Docker volumes
-3. THE Zookeeper_Service SHALL store coordination metadata in persistent volumes
-4. THE Data_Pipeline_System SHALL preserve data during container updates
-5. THE Docker_Compose SHALL configure appropriate volume mount points for each service
-6. THE Data_Pipeline_System SHALL support backup procedures for critical data
-7. WHEN containers are recreated, THE Data_Pipeline_System SHALL retain existing data
+1. **THE Data_Pipeline_System SHALL** provide a comprehensive `README_AWS.md` detailing step-by-step AWS EC2 console setup parameters.
+2. **THE Security_Group configurations** documented **SHALL** mandate strict port whitelist boundaries: Port `22` (SSH Administrative Access), Port `9092` (Kafka Data Ingestion), and Port `8000` (ChromaDB Cloud Access).
+3. **THE README_AWS.md SHALL** provide explicit instructions on mapping AWS Security Groups to the development team's public IP address, denying all other inbound traffic by default.
+4. **THE README_AWS.md SHALL** detail the structural configuration required for `KAFKA_ADVERTISED_LISTENERS` to dynamically bind the Kafka broker to the public AWS Elastic IP.
+5. **THE documentation SHALL** include step-by-step validation procedures to test remote endpoint security without causing service disruption.
 
-### Requirement 8: Resource Optimization for Development Environment
+---
 
-**User Story:** As a developer, I want optimized resource usage, so that the pipeline runs efficiently on t3.medium instances without performance degradation.
+### Requirement 5: Vector Storage and Policy Ingestion Architecture
 
-#### Acceptance Criteria
-
-1. THE Kafka_Broker SHALL configure JVM heap size of 1GB (KAFKA_HEAP_OPTS="-Xmx1G -Xms1G") optimized for t3.medium
-2. THE ChromaDB_Service SHALL limit memory usage to prevent system resource exhaustion
-3. THE Zookeeper_Service SHALL use minimal resource configuration suitable for development
-4. THE Data_Pipeline_System SHALL start all services within 300 seconds on t3.medium hardware
-5. THE Data_Pipeline_System SHALL maintain stable operation under typical development workloads
-6. WHERE system resources approach limits, THE Monitoring_Stack SHALL provide resource usage visibility
-7. THE Docker_Compose SHALL configure restart policies to handle temporary resource constraints
-
-### Requirement 9: Development and Testing Support
-
-**User Story:** As a developer, I want development-friendly configuration, so that I can test and iterate on data pipeline applications efficiently.
+**User Story:** As an AI engineer, I want ChromaDB configured with isolated collections, so that macroeconomic policies can be vector-indexed and mapped to specific historical timeframes.
 
 #### Acceptance Criteria
 
-1. THE Kafka_Broker SHALL enable topic auto-creation for rapid prototyping
-2. THE Kafka_Broker SHALL configure short log retention periods appropriate for testing
-3. THE ChromaDB_Service SHALL provide REST API access for development tools
-4. THE Data_Pipeline_System SHALL support configuration changes without full redeployment
-5. THE Deploy_Script SHALL provide development mode options for faster startup
-6. THE Data_Pipeline_System SHALL include sample configuration files for common use cases
-7. THE README_AWS.md SHALL include examples of connecting client applications to the services
+1. **THE ChromaDB_Service SHALL** expose a clean REST API on port `8000` accessible only to authorized ingestion agents running within the whitelisted AWS network boundary.
+2. **THE ChromaDB_Service SHALL** host a primary collection named `macro_policies` configured with cosine similarity metrics for precise semantic text mapping.
+3. **THE ingestion pipeline** feeding ChromaDB **SHALL** enforce a strict `Standard_JSON` structure for chunk metadata, embedding the fields: `source_url`, `ticker_context` (`"SHB"` or `"SCB"`), and `publish_date` (ISO 8601 format).
+4. **THE ChromaDB_Service configuration SHALL** forbid the automated conversion or ingestion of line-delimited JSONL formats within the core policy vector indexes.
+5. **THE Vector database storage volume mounts SHALL** be explicitly separate from the Kafka logging paths to guarantee independent data recovery lines.
+
+---
+
+### Requirement 6: Resilience, Integrity, and Dev-Testing Support
+
+**User Story:** As a backend developer, I want development-focused diagnostic logs and data retention rules, so that I can reliably test edge-case stress scenarios for historical asset simulations.
+
+#### Acceptance Criteria
+
+1. **THE Kafka_Broker SHALL** configure specialized development log retention rules (`log.retention.hours=72` and `log.segment.bytes=1073741824`) to minimize disk space consumption on AWS EBS storage.
+2. **THE Data_Pipeline_System SHALL** provide unified status check utilities allowing developers to verify internal broker and vector storage connectivity via a single terminal command.
+3. **WHEN** docker containers undergo simulated crashes or host system reboots, **THE Data_Pipeline_System SHALL** preserve 100% of the ingested historical data streams for both SHB and SCB context frames.
+4. **THE system SHALL** support configuration updates to individual container environment variables via standard environment files (`.env`) without requiring a complete database purge or cold-restart sequence.

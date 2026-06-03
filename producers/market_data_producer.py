@@ -1,7 +1,8 @@
 """
 Market Data Producer Module - Thu thập dữ liệu VNINDEX và VN30 từ vnstock
 """
-import vnstock as stock
+import vnstock
+from vnstock.api.quote import Quote
 import pandas as pd
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional
@@ -10,6 +11,8 @@ import os
 from kafka_producer_base import BaseKafkaProducer
 import logging
 import numpy as np
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from confluent_kafka import KafkaException
 
 class MarketDataProducer(BaseKafkaProducer):
     """Market Data Producer cho dữ liệu chứng khoán Việt Nam"""
@@ -53,25 +56,11 @@ class MarketDataProducer(BaseKafkaProducer):
             start_str = start_date.strftime('%Y-%m-%d')
             end_str = end_date.strftime('%Y-%m-%d')
             
-            # Fetch data based on ticker type
-            if ticker.upper() in ['VNINDEX', 'VN30', 'HNX', 'UPCOM']:
-                # Index data
-                df = stock.stock_historical_data(
-                    symbol=ticker.upper(),
-                    start_date=start_str,
-                    end_date=end_str,
-                    resolution='1D',
-                    type='index'
-                )
-            else:
-                # Individual stock data
-                df = stock.stock_historical_data(
-                    symbol=ticker.upper(),
-                    start_date=start_str,
-                    end_date=end_str,
-                    resolution='1D',
-                    type='stock'
-                )
+            # Create Quote instance for this ticker using new vnstock 4.x API
+            quote = Quote(symbol=ticker.upper(), source='VCI')
+            
+            # Fetch historical data
+            df = quote.history(start=start_str, end=end_str, interval='1D')
             
             if df is None or df.empty:
                 self.logger.warning(f"No data returned for {ticker}")
@@ -217,8 +206,11 @@ class MarketDataProducer(BaseKafkaProducer):
             Real-time market data
         """
         try:
-            # Try to get intraday data if available
-            df = stock.stock_intraday_data(symbol=ticker.upper())
+            # Create Quote instance for this ticker
+            quote = Quote(symbol=ticker.upper(), source='VCI')
+            
+            # Try to get intraday data if available using new API
+            df = quote.intraday()
             
             if df is not None and not df.empty:
                 df = df.sort_values('time', ascending=False)
@@ -383,9 +375,9 @@ class MarketDataProducer(BaseKafkaProducer):
         try:
             self.logger.info("Testing vnstock connection...")
             
-            # Try to get a simple stock list using the correct API
-            listing = stock.Listing()
-            test_data = listing.all_symbols()
+            # Try to get data for a simple test ticker using new API
+            test_quote = Quote(symbol='VN30', source='VCI')
+            test_data = test_quote.history(start='2024-01-01', end='2024-01-02', interval='1D')
             
             if test_data is not None and not test_data.empty:
                 self.logger.info("vnstock connection test successful")

@@ -2,613 +2,461 @@
 
 ## Overview
 
-The AWS Data Pipeline Infrastructure is a containerized data processing system designed for deployment on AWS EC2 instances. This system provides a complete streaming data pipeline using a single Apache Kafka broker for message streaming, ChromaDB for vector storage, and comprehensive monitoring capabilities optimized for development and testing environments on t3.medium instances.
+The AWS Data Pipeline Infrastructure is a production-ready, containerized financial data streaming system specifically engineered for AWS EC2 t3.large instances (2 vCPU, 8GB RAM). This system provides a resilient real-time pipeline utilizing a single Apache Kafka broker with four dedicated topics for multi-source financial data ingestion and ChromaDB for vector-indexed macroeconomic policy storage. The infrastructure is optimized to support comparative analysis between standard market baselines (SHB baseline period: 01/01/2026 to 01/06/2026) and systemic crisis events (SCB crisis period: 01/09/2022 to 31/12/2022).
 
 ## Architecture
 
-The system follows a single-node containerized architecture optimized for development and testing environments. The architecture prioritizes resource efficiency and simplicity while maintaining production-ready patterns for easy migration to multi-broker configurations when needed.
+The system implements a single-node containerized architecture managed via Docker Compose, specifically optimized for AWS EC2 t3.large hardware specifications. The design prioritizes memory efficiency, chronological data ordering, and zero-loss persistence while providing clear engineering paths for future multi-node production scaling.
 
 **Key Architectural Principles:**
-- Single-node deployment optimized for t3.medium EC2 instances
-- Container-based isolation with Docker Compose orchestration
-- Persistent data storage with volume mapping
-- Network security through AWS Security Groups
-- Resource-optimized JVM configurations
-- Development-friendly configuration with production migration path
+- **AWS t3.large Optimization:** Memory allocation tuned for 8GB RAM with 2GB JVM heap for Kafka (`KAFKA_HEAP_OPTS="-Xmx2G -Xms2G"`) to prevent OOM failures
+- **Strict Chronological Ordering:** Single-partition Kafka topics ensure absolute sequence integrity for time-series analysis
+- **Isolated Custom Bridge Network:** Secure inter-container communication with AWS Security Group integration
+- **Standard JSON Format:** Universal `Standard_JSON` serialization across all transport layers, explicitly forbidding JSONL variants
+- **Independent Data Persistence:** Separate volume mounts for Kafka logs and ChromaDB collections for independent recovery
+
+---
 
 ## Components and Interfaces
 
 ### Core System Components
 
 **1. Single Kafka Broker**
-- **Purpose**: Primary message streaming service optimized for single-node deployment
-- **Configuration**: 1GB JVM heap with development-optimized parameters
-- **Interface**: Kafka Protocol on port 9092
-- **Dependencies**: Zookeeper for coordination
-- **Data Storage**: Persistent volume at `/opt/data-pipeline/kafka`
+- **Purpose**: High-throughput message streaming for four core financial data topics: `news_rss_data`, `f319_data`, `fb_mock_data`, and `market_stock_data`
+- **AWS Configuration**: 2GB JVM Heap allocation (`KAFKA_HEAP_OPTS="-Xmx2G -Xms2G"`) optimized for t3.large instances
+- **Topics Architecture**: Single-partition per topic for guaranteed chronological ordering
+- **Interface**: Kafka Native Binary Protocol on external port `9092` with dynamic AWS Elastic IP binding via `KAFKA_ADVERTISED_LISTENERS`
+- **Dependencies**: Zookeeper coordination service with strict health check dependencies
+- **Data Storage**: Persistent Docker volume mapped to `/opt/data-pipeline/kafka`
+- **Log Retention**: Development-optimized settings (`log.retention.hours=72`, `log.segment.bytes=1073741824`) for EBS storage efficiency
 
 **2. ChromaDB Vector Database**
-- **Purpose**: Vector storage and similarity search service
-- **Configuration**: REST API enabled with persistent storage
-- **Interface**: HTTP REST API on port 8000
-- **Dependencies**: None (standalone service)
-- **Data Storage**: Persistent volume at `/opt/data-pipeline/chromadb`
+- **Purpose**: Vector storage and semantic search for macroeconomic policy documents with timeline-based indexing
+- **Configuration**: HTTP REST API hosting `macro_policies` collection with cosine similarity metrics
+- **Interface**: HTTP REST API on external port `8000` with AWS Security Group protection
+- **Data Format**: Strict `Standard_JSON` structure with required fields: `source_url`, `ticker_context`, `publish_date` (ISO 8601)
+- **Dependencies**: Standalone container architecture
+- **Data Storage**: Isolated persistent Docker volume mapped to `/opt/data-pipeline/chromadb`
+- **Access Control**: Restricted to authorized ingestion agents within AWS network boundary
 
 **3. Zookeeper Coordination Service**
-- **Purpose**: Kafka broker coordination and metadata management
-- **Configuration**: Single-node setup with minimal resource allocation
-- **Interface**: Zookeeper Protocol on port 2181 (internal only)
-- **Dependencies**: None
-- **Data Storage**: Persistent volume at `/opt/data-pipeline/zookeeper`
+- **Purpose**: Kafka broker metadata management and cluster state coordination
+- **Configuration**: Single-node instance with minimal resource overhead
+- **Interface**: Zookeeper Protocol on port `2181` (internal bridge network only)
+- **Dependencies**: None (base service)
+- **Data Storage**: Persistent volume mapped to `/opt/data-pipeline/zookeeper`
 
-**4. Monitoring Stack**
-- **Purpose**: Service health monitoring and log aggregation
-- **Configuration**: Lightweight monitoring with Docker log integration
-- **Interface**: Log files and health check endpoints
-- **Dependencies**: All core services
-- **Data Storage**: Log aggregation at `/opt/data-pipeline/logs`
+---
 
 ### Interface Specifications
 
-**Kafka Producer/Consumer Interface:**
-```
-Protocol: Kafka Native Protocol
-Port: 9092
-Authentication: None (development mode)
-Serialization: JSON/String
-Throughput Target: 500 messages/second
-Connection Limit: 25 concurrent clients
-```
+#### Kafka Data Ingestion Interface
 
-**ChromaDB REST Interface:**
-```
-Protocol: HTTP/1.1
-Port: 8000  
-Authentication: None (development mode)
-Content-Type: application/json
-Response Time: <100ms for 1M documents
-Connection Pooling: 10 connections
-```
-
-**Health Check Interfaces:**
-```
-Kafka: kafka-topics.sh --bootstrap-server localhost:9092 --list
-ChromaDB: GET http://localhost:8000/api/v1/heartbeat  
-Zookeeper: echo ruok | nc localhost 2181
-```
-
-### High-Level Architecture Diagram
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        AWS EC2 Instance                         │
-│                       (t3.medium - 2vCPU, 4GB)                │
-├─────────────────────────────────────────────────────────────────┤
-│                     Docker Compose Network                      │
-│  ┌─────────────┐  ┌─────────────────────────────────────────┐   │
-│  │ Zookeeper   │  │         Single Kafka Broker             │   │
-│  │   :2181     │◄─┤  ┌─────────────────────────────────────┐ │   │
-│  │             │  │  │           kafka                     │ │   │
-│  └─────────────┘  │  │          :9092                      │ │   │
-│                   │  │     (1GB JVM Heap)                  │ │   │
-│                   │  └─────────────────────────────────────┘ │   │
-│                   └─────────────────────────────────────────┘   │
-│  ┌─────────────────────────────────────────────────────────────┐ │
-│  │                    ChromaDB Service                         │ │
-│  │                      :8000                                  │ │
-│  └─────────────────────────────────────────────────────────────┘ │
-│  ┌─────────────────────────────────────────────────────────────┐ │
-│  │                  Monitoring Stack                           │ │
-│  │            Health Checks & Log Aggregation                 │ │
-│  └─────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
+**Topic Configuration:**
+```yaml
+Topics:
+  news_rss_data:
+    partitions: 1
+    replication-factor: 1
+    purpose: RSS financial news feeds
+    
+  f319_data:
+    partitions: 1  
+    replication-factor: 1
+    purpose: Vietnamese F319 forum discussions
+    required_fields: ["ticker_context", "content", "timestamp"]
+    
+  fb_mock_data:
+    partitions: 1
+    replication-factor: 1  
+    purpose: Facebook mock social media data
+    required_fields: ["ticker_context", "content", "timestamp"]
+    
+  market_stock_data:
+    partitions: 1
+    replication-factor: 1
+    purpose: VNStock API market data
+    supported_periods:
+      - SHB_baseline: "01/01/2026 to 01/06/2026"
+      - SCB_crisis: "01/09/2022 to 31/12/2022"
+      - proxies: ["VNINDEX", "STB"]
 ```
 
-### Network Architecture
-
-```
-AWS Security Group Configuration:
-┌─────────────────────┐
-│  Inbound Rules      │
-├─────────────────────┤
-│ SSH      22/tcp     │ ← Admin Access
-│ Kafka    9092/tcp   │ ← Client Connections
-│ ChromaDB 8000/tcp   │ ← API Access
-└─────────────────────┘
-
-┌─────────────────────┐
-│ Outbound Rules      │
-├─────────────────────┤
-│ All Traffic         │ ← Service Dependencies
-└─────────────────────┘
+**Message Format (Standard_JSON):**
+```json
+{
+  "timestamp": "2024-01-15T10:30:00Z",
+  "ticker_context": "SHB|SCB",
+  "source": "rss|f319|facebook|vnstock",
+  "content": {
+    "title": "string",
+    "body": "string",
+    "metadata": {
+      "publish_date": "ISO 8601",
+      "source_url": "string"
+    }
+  }
+}
 ```
 
-## Component Design
+#### ChromaDB Vector Storage Interface
 
-### 1. Docker Compose Infrastructure
+**Collection Schema:**
+```yaml
+Collection: macro_policies
+Similarity Metric: cosine
+Metadata Structure:
+  source_url: string (required)
+  ticker_context: "SHB" | "SCB" (required)
+  publish_date: ISO 8601 string (required)
+  document_type: "policy" | "regulation" | "announcement"
+  relevance_score: float
+```
 
-#### Core Services Configuration
+**REST API Endpoints:**
+- `GET /api/v1/collections/macro_policies` - Collection info
+- `POST /api/v1/collections/macro_policies/add` - Document ingestion
+- `POST /api/v1/collections/macro_policies/query` - Semantic search
+- `GET /api/v1/heartbeat` - Health check
 
-**Zookeeper Service:**
-- Single instance coordination service
-- Port: 2181 (internal)
-- Persistent volume: `zookeeper-data`
-- Memory limit: 512MB
-- Restart policy: `unless-stopped`
+---
 
-**Kafka Single Broker:**
-- Single instance deployment optimized for t3.medium
-- Port: 9092 (external client access)
-- JVM Heap: 1GB (KAFKA_HEAP_OPTS="-Xmx1G -Xms1G")
-- Persistent volume: `kafka-data`
-- Single partition default for topics
-- Auto-topic creation: enabled
-- Log retention: 168 hours (7 days) for development
-- Optimized for development and testing environments
+## Data Models
 
-**ChromaDB Service:**
-- Port: 8000 (REST API)
-- Persistent volume: `chromadb-data`
-- Memory limit: 1GB
-- REST API enabled for development tools
+### Financial Message Schema
 
-#### Network Configuration
+```python
+class FinancialMessage:
+    timestamp: datetime  # ISO 8601 format
+    ticker_context: Literal["SHB", "SCB"]
+    source: Literal["rss", "f319", "facebook", "vnstock"]
+    content: MessageContent
+    
+class MessageContent:
+    title: str
+    body: str
+    metadata: MessageMetadata
+    
+class MessageMetadata:
+    publish_date: datetime
+    source_url: str
+    sentiment_score: Optional[float]
+    topic_tags: List[str]
+```
+
+### Policy Document Schema
+
+```python
+class PolicyDocument:
+    document_id: str
+    source_url: str
+    ticker_context: Literal["SHB", "SCB"]
+    publish_date: datetime
+    document_type: Literal["policy", "regulation", "announcement"]
+    content: str
+    embedding_vector: List[float]
+    relevance_score: float
+```
+
+### Case Study Time Ranges
+
+```python
+class CaseStudyPeriods:
+    SHB_BASELINE = {
+        "start": "2026-01-01T00:00:00Z",
+        "end": "2026-06-01T00:00:00Z", 
+        "description": "Standard market baseline conditions",
+        "primary_ticker": "SHB"
+    }
+    
+    SCB_CRISIS = {
+        "start": "2022-09-01T00:00:00Z",
+        "end": "2022-12-31T23:59:59Z",
+        "description": "Systemic banking crisis period",
+        "primary_ticker": "SCB",
+        "proxy_tickers": ["VNINDEX", "STB"]
+    }
+```
+
+---
+
+## AWS Infrastructure Configuration
+
+### EC2 Instance Specifications
 
 ```yaml
+Instance Type: t3.large
+vCPU: 2
+Memory: 8GB RAM
+Storage: 20GB+ EBS GP3
+Operating System: Ubuntu Server 22.04 LTS
+Network: VPC with custom Security Groups
+```
+
+### Security Group Configuration
+
+```yaml
+Inbound Rules:
+  - Port 22 (SSH): Restricted to development team IPs
+  - Port 9092 (Kafka): Restricted to authorized producer IPs  
+  - Port 8000 (ChromaDB): Restricted to internal network
+  
+Outbound Rules:
+  - Port 80/443 (HTTP/HTTPS): All destinations (for package updates)
+  - Port 53 (DNS): All destinations
+```
+
+### Docker Compose Architecture
+
+```yaml
+version: '3.8'
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      KAFKA_HEAP_OPTS: "-Xmx2G -Xms2G"
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://${AWS_ELASTIC_IP}:9092
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      
+  chromadb:
+    image: chromadb/chroma:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+
 networks:
-  data-pipeline:
+  pipeline-network:
     driver: bridge
     ipam:
       config:
         - subnet: 172.20.0.0/16
+
+volumes:
+  kafka-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/data-pipeline/kafka
+  chromadb-data:
+    driver: local  
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/data-pipeline/chromadb
+  zookeeper-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/data-pipeline/zookeeper
 ```
 
-### 2. Deployment Script (deploy.sh)
+---
 
-#### Installation Flow
+## Error Handling and Resilience
 
-```
-┌─────────────────┐
-│ System Check    │ → Validate OS, CPU, Memory
-│                 │
-└─────┬───────────┘
-      │
-┌─────▼───────────┐
-│ Docker Install  │ → Install Engine if missing
-│                 │ → Install Compose if missing
-└─────┬───────────┘
-      │
-┌─────▼───────────┐
-│ Service Deploy  │ → Pull images
-│                 │ → Start containers
-│                 │ → Verify health
-└─────┬───────────┘
-      │
-┌─────▼───────────┐
-│ Status Report   │ → Service connectivity
-│                 │ → Resource usage
-│                 │ → Access URLs
-└─────────────────┘
-```
+### Container Restart Policies
 
-#### System Requirements Validation
-- OS: Linux (Ubuntu/CentOS/Amazon Linux)
-- CPU: Minimum 2 cores
-- Memory: Minimum 4GB RAM
-- Disk: Minimum 20GB available
-- Docker: Version 20.10+
-- Docker Compose: Version 2.0+
+All core services implement `restart: unless-stopped` policies with health check dependencies to ensure automatic recovery from failures while maintaining data integrity.
 
-#### Error Handling
-- Pre-installation validation with clear error messages
-- Graceful rollback on failure
-- Service-specific health check timeouts
-- Resource constraint warnings and recommendations
+### Data Persistence Strategy
 
-### 3. AWS Infrastructure Setup
-
-#### EC2 Instance Specification
-- **Instance Type:** t3.medium
-- **vCPUs:** 2
-- **Memory:** 4GB
-- **Storage:** 30GB GP3 SSD (minimum)
-- **Network:** Enhanced networking enabled
-- **Operating System:** Amazon Linux 2 or Ubuntu 20.04 LTS
-
-#### Security Group Configuration
-
-```
-Inbound Rules:
-- Type: SSH, Protocol: TCP, Port: 22, Source: {ADMIN_IP}/32
-- Type: Custom TCP, Protocol: TCP, Port: 9092, Source: {CLIENT_IPS}/32
-- Type: Custom TCP, Protocol: TCP, Port: 8000, Source: {CLIENT_IPS}/32
-
-Outbound Rules:
-- Type: All Traffic, Protocol: All, Port Range: All, Destination: 0.0.0.0/0
+```yaml
+Persistence Guarantees:
+  kafka-data: 
+    - Message retention: 72 hours
+    - Segment size: 1GB
+    - Replication: Single-node (development)
+    - Recovery: Full message log persistence through container restarts
+    
+  chromadb-data:
+    - Vector embeddings: Persistent across restarts
+    - Collection metadata: Fully recoverable
+    - Backup strategy: Independent volume mounts
+    
+  zookeeper-data:
+    - Metadata persistence: Critical for Kafka recovery
+    - Log retention: Standard Zookeeper configuration
 ```
 
-### 4. Monitoring and Health Checks
+### AWS-Specific Resilience
 
-#### Health Check Endpoints
-- **Kafka:** `kafka-topics.sh --bootstrap-server localhost:9092 --list`
-- **ChromaDB:** `HTTP GET http://localhost:8000/api/v1/heartbeat`
-- **Zookeeper:** `echo ruok | nc localhost 2181`
+```yaml
+EBS Storage:
+  Type: GP3 (General Purpose SSD)
+  IOPS: 3000 baseline
+  Throughput: 125 MB/s baseline
+  Backup: Daily snapshots recommended
 
-#### Monitoring Stack Components
-- Service health monitoring with 30-second intervals
-- Resource usage monitoring (CPU, Memory, Disk)
-- Log aggregation from all services
-- Automated alerts for service failures
-- Performance metrics collection
-
-#### Log Management
-- Centralized logging via Docker log drivers
-- Log rotation: 10MB files, 5 files maximum
-- Log levels: INFO for production, DEBUG for development
-- Structured JSON logging for parsing
-
-### 5. Data Persistence Strategy
-
-#### Volume Mapping Strategy
-
-```
-Host Path Mapping:
-├── /opt/data-pipeline/
-│   ├── zookeeper/          → zookeeper-data volume
-│   ├── kafka/              → kafka-data volume  
-│   ├── chromadb/           → chromadb-data volume
-│   └── logs/               → log aggregation
+Network Resilience:
+  Elastic IP: Static IP binding for external producers
+  VPC: Isolated network with custom route tables
+  Multi-AZ: Single-AZ deployment (development)
 ```
 
-#### Backup Strategy
-- Daily automated snapshots of persistent volumes
-- Point-in-time recovery capability
-- Cross-region backup replication (optional)
-- Backup retention: 7 days for development
+---
 
-## Data Models
+## Deployment Configuration
 
-### Kafka Topic Schema
-```json
-{
-  "topic_name": "string",
-  "partitions": "integer (default: 1)",
-  "replication_factor": "integer (1)",
-  "retention_ms": "integer (604800000)", // 7 days
-  "cleanup_policy": "string (delete)"
-}
-```
+### Automated Deployment Script
 
-### ChromaDB Collection Schema
-```json
-{
-  "collection_id": "uuid",
-  "name": "string",
-  "metadata": {
-    "dimension": "integer",
-    "distance_function": "string (cosine|euclidean|manhattan)"
-  },
-  "documents": [
-    {
-      "id": "string",
-      "embedding": "float[]",
-      "metadata": "object",
-      "document": "string"
-    }
-  ]
-}
-```
-
-## API Interfaces
-
-### Kafka Producer/Consumer API
-
-**Producer Configuration:**
-```properties
-bootstrap.servers=<EC2_PUBLIC_IP>:9092
-key.serializer=org.apache.kafka.common.serialization.StringSerializer
-value.serializer=org.apache.kafka.common.serialization.JsonSerializer
-acks=1
-retries=3
-```
-
-**Consumer Configuration:**
-```properties
-bootstrap.servers=<EC2_PUBLIC_IP>:9092
-key.deserializer=org.apache.kafka.common.serialization.StringDeserializer
-value.deserializer=org.apache.kafka.common.serialization.JsonDeserializer
-group.id=data-pipeline-consumer
-auto.offset.reset=earliest
-```
-
-### ChromaDB REST API
-
-**Base URL:** `http://<EC2_PUBLIC_IP>:8000`
-
-**Key Endpoints:**
-- `GET /api/v1/heartbeat` - Health check
-- `POST /api/v1/collections` - Create collection
-- `GET /api/v1/collections/{collection_id}` - Get collection
-- `POST /api/v1/collections/{collection_id}/add` - Add documents
-- `POST /api/v1/collections/{collection_id}/query` - Query similar documents
-
-## Configuration Management
-
-### Environment Variables
 ```bash
-# Kafka Configuration
-KAFKA_HEAP_OPTS="-Xmx1G -Xms1G"
-KAFKA_LOG_RETENTION_HOURS=168
-KAFKA_NUM_PARTITIONS=1
-KAFKA_DEFAULT_REPLICATION_FACTOR=1
+#!/bin/bash
+# deploy-aws-pipeline.sh
 
-# ChromaDB Configuration  
-CHROMA_SERVER_HOST=0.0.0.0
-CHROMA_SERVER_HTTP_PORT=8000
-CHROMA_PERSIST_DIRECTORY=/chroma/chroma
+# Pre-flight checks for t3.large compatibility
+check_system_requirements() {
+    MEMORY_GB=$(free -g | awk '/^Mem:/{print $2}')
+    if [ $MEMORY_GB -lt 8 ]; then
+        echo "ERROR: Insufficient memory. t3.large requires 8GB, found ${MEMORY_GB}GB"
+        echo "RECOMMENDATION: Use t3.large or larger instance type"
+        exit 1
+    fi
+}
 
-# System Configuration
-DOCKER_COMPOSE_PROJECT_NAME=data-pipeline
-DATA_PERSISTENCE_PATH=/opt/data-pipeline
+# Docker installation for AWS Ubuntu
+install_docker_aws() {
+    if ! command -v docker &> /dev/null; then
+        echo "Installing Docker Engine..."
+        curl -fsSL https://get.docker.com -o get-docker.sh
+        sudo sh get-docker.sh
+        sudo usermod -aG docker $USER
+    fi
+    
+    if ! command -v docker-compose &> /dev/null; then
+        echo "Installing Docker Compose..."
+        sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+        sudo chmod +x /usr/local/bin/docker-compose
+    fi
+}
+
+# Service initialization with health checks
+deploy_pipeline() {
+    echo "Creating data directories..."
+    sudo mkdir -p /opt/data-pipeline/{kafka,chromadb,zookeeper}
+    sudo chown -R $USER:$USER /opt/data-pipeline
+    
+    echo "Starting services..."
+    docker-compose up -d
+    
+    echo "Waiting for services..."
+    wait_for_port 9092 "Kafka Broker"
+    wait_for_port 8000 "ChromaDB API"
+    
+    echo "Deployment complete!"
+    echo "Kafka endpoint: ${AWS_ELASTIC_IP}:9092"
+    echo "ChromaDB endpoint: ${AWS_ELASTIC_IP}:8000"
+}
 ```
 
-### Dynamic Configuration Updates
-- Kafka configuration via JMX and Admin API
-- ChromaDB configuration via REST API
-- Security group updates via AWS CLI/Console
-- No service restart required for most configuration changes
+### Environment Configuration
 
-## Security Considerations
-
-### Network Security
-- IP-based access control via AWS Security Groups
-- VPC isolation for enhanced security
-- TLS encryption for client connections (production deployment)
-- Inter-service communication over isolated Docker network
-
-### Data Security
-- Persistent volume encryption at rest
-- Network traffic encryption in transit
-- Access logs for audit trails
-- Regular security updates via automated patching
-
-### Authentication & Authorization
-- AWS IAM roles for EC2 instance permissions
-- Security group rules for network access control
-- Docker container isolation
-- Optional: Kafka SASL authentication for production use
-
-## Error Handling
-
-### Service Failure Recovery
-```
-Service Failure Detection:
-├── Health Check Timeout (30s)
-├── Resource Exhaustion Detection  
-├── Network Connectivity Issues
-└── Container Exit Codes
-
-Recovery Actions:
-├── Automatic Restart (restart: unless-stopped)
-├── Service Dependencies (depends_on)
-├── Health Check Retries (3 attempts)
-└── Manual Intervention Alerts
+```bash
+# .env file for AWS deployment
+AWS_ELASTIC_IP=<your-elastic-ip>
+KAFKA_HEAP_OPTS="-Xmx2G -Xms2G"
+CHROMADB_HOST=0.0.0.0
+CHROMADB_PORT=8000
+LOG_LEVEL=INFO
+DEVELOPMENT_MODE=true
 ```
 
-### Common Error Scenarios
-1. **Insufficient Memory:** Monitoring alerts + resource recommendations
-2. **Network Connectivity:** Security group validation + connectivity tests
-3. **Service Startup Failures:** Detailed error logging + troubleshooting guide
-4. **Data Corruption:** Backup restoration procedures
-5. **Performance Degradation:** Resource scaling recommendations
-
-## Performance Optimization
-
-### Resource Allocation Strategy
-```
-t3.medium (4GB RAM) Distribution:
-├── Operating System: ~512MB
-├── Kafka Single Broker: ~1GB (optimized JVM heap)
-├── ChromaDB: ~1GB
-├── Zookeeper: ~256MB
-├── Monitoring: ~128MB
-└── System Buffer: ~1GB (significant improvement from cluster)
-```
-
-### Performance Tuning Parameters
-
-**Kafka Optimization:**
-- `num.network.threads=2` (optimized for single broker)
-- `num.io.threads=4` (reduced for single node)
-- `socket.send.buffer.bytes=102400`
-- `socket.receive.buffer.bytes=102400`
-- `log.flush.interval.messages=10000`
-- `log.segment.bytes=1073741824` (1GB segments)
-- `log.retention.check.interval.ms=300000` (5 minutes)
-
-**ChromaDB Optimization:**
-- Connection pooling: 10 connections
-- Batch insert size: 1000 documents
-- Query timeout: 30 seconds
-- Memory mapping for large datasets
-
-## Development Support
-
-### Development Mode Features
-- Reduced resource requirements
-- Faster startup times (development profile)
-- Debug logging enabled
-- Auto-reload on configuration changes
-- Sample data generators for testing
-
-### Sample Configurations
-
-**Sample Kafka Producer (Python):**
-```python
-from kafka import KafkaProducer
-import json
-
-producer = KafkaProducer(
-    bootstrap_servers=['<EC2_IP>:9092'],
-    value_serializer=lambda x: json.dumps(x).encode('utf-8')
-)
-
-producer.send('test-topic', {'message': 'Hello World'})
-```
-
-**Sample ChromaDB Client (Python):**
-```python
-import chromadb
-
-client = chromadb.HttpClient(host='<EC2_IP>', port=8000)
-collection = client.create_collection("test-collection")
-collection.add(
-    documents=["Sample document"],
-    metadatas=[{"source": "test"}],
-    ids=["id1"]
-)
-```
-
-## Testing Strategy
-
-### Integration Testing Approach
-- Service connectivity verification
-- End-to-end data flow testing
-- Failure recovery testing
-- Performance benchmarking
-- Security validation
-
-### Load Testing Parameters
-- Kafka throughput: 500 messages/second (optimized for single broker)
-- ChromaDB query latency: <100ms for 1M documents
-- Concurrent connections: 25 clients (adjusted for single broker)
-- Data retention testing: 7-day cycles
+---
 
 ## Correctness Properties
 
 *A property is a characteristic or behavior that should hold true across all valid executions of a system—essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
 
-### Property 1: Single Broker Stability
+### Property 1: VNStock Data Format Compatibility
 
-*For any* single Kafka broker deployment on t3.medium, the broker SHALL maintain stable operation under development workloads without memory exhaustion or service failures.
+*For any* valid VNStock API payload within the supported periods (SHB baseline 01/01/2026-01/06/2026 or SCB crisis 01/09/2022-31/12/2022), the system SHALL successfully ingest the payload into the `market_stock_data` topic without data corruption or format errors.
 
-**Validates: Requirements 2.1, 2.2, 2.7**
+**Validates: Requirements 2.4**
 
-### Property 2: Data Persistence Across Restarts
+### Property 2: Ticker Context Validation
 
-*For any* service with persistent volumes (Kafka, ChromaDB, Zookeeper), when containers are recreated, all previously stored data SHALL be retained and accessible.
+*For any* JSON payload submitted to `f319_data` or `fb_mock_data` topics, the payload SHALL be accepted if and only if it contains a valid `ticker_context` field with value "SHB" or "SCB" in Standard_JSON format.
 
-**Validates: Requirements 7.1, 7.2, 7.3, 7.7**
+**Validates: Requirements 2.5**
 
-### Property 3: Service Health Verification
+### Property 3: ChromaDB Metadata Structure Enforcement  
 
-*For any* deployed service in the data pipeline, health check endpoints SHALL respond with valid status information within the configured timeout period.
+*For any* document ingestion attempt to the `macro_policies` collection, the system SHALL accept the document if and only if the metadata contains all required fields (`source_url`, `ticker_context`, `publish_date`) in valid Standard_JSON format.
 
-**Validates: Requirements 6.1, 6.7**
+**Validates: Requirements 5.3**
 
-### Property 4: Resource Constraint Compliance
+### Property 4: JSONL Format Rejection
 
-*For any* t3.medium EC2 instance, the single-broker data pipeline system SHALL start all services within 300 seconds and maintain stable operation under typical development workloads.
+*For any* data submission attempt to ChromaDB vector indexes, if the data is in line-delimited JSONL format, the system SHALL reject the submission and return a format validation error.
 
-**Validates: Requirements 8.4, 8.5**
+**Validates: Requirements 5.4**
 
-### Property 5: Security Group Access Control
+### Property 5: Data Persistence Across Container Restarts
 
-*For any* IP address not in the configured whitelist, connection attempts to Kafka (port 9092) and ChromaDB (port 8000) SHALL be rejected by the AWS Security Group.
+*For any* ingested data in both Kafka topics and ChromaDB collections, after simulating container crashes or system reboots, the system SHALL preserve 100% of the historical data for both SHB and SCB context frames without data loss.
 
-**Validates: Requirements 5.1, 5.2, 5.3, 5.5**
+**Validates: Requirements 6.3**
 
-### Property 6: Configuration Change Isolation
+### Property 6: Environment Configuration Hot-Reload
 
-*For any* configuration update that doesn't require service restart, the change SHALL be applied without interrupting active connections or causing data loss.
+*For any* valid environment variable update via `.env` files, the system SHALL apply the configuration changes without requiring database purges or losing existing historical data streams.
 
-**Validates: Requirements 5.8, 9.4**
+**Validates: Requirements 6.4**
 
-### Property 7: Deployment Script Validation
+---
 
-*For any* target system that meets minimum requirements, the deploy script SHALL successfully install all dependencies and start all services with appropriate health verification.
+## Testing Strategy
 
-**Validates: Requirements 3.1, 3.2, 3.5, 3.6**
+### Property-Based Testing Framework
 
-### Property 8: Monitoring Event Logging
+**Test Configuration:**
+- Minimum 100 iterations per property test
+- Property test tags reference design document properties
+- Tag format: **Feature: aws-data-pipeline-infrastructure, Property {number}: {property_text}**
 
-*For any* service failure or health check failure, the monitoring stack SHALL log the failure event with sufficient detail for troubleshooting.
+**Unit Testing Focus:**
+- AWS Security Group configuration validation
+- Docker Compose service dependency verification  
+- Port mapping and network configuration checks
+- Deployment script error condition handling
+- Documentation completeness validation
 
-**Validates: Requirements 6.4, 6.8**
+**Integration Testing:**
+- End-to-end data flow through all four Kafka topics
+- ChromaDB vector search performance with policy documents
+- AWS EC2 deployment validation on t3.large instances
+- Cross-container communication via bridge network
+- Disaster recovery and data persistence scenarios
 
-## Implementation Roadmap
+### Development Validation Tools
 
-### Phase 1: Core Infrastructure (Week 1)
-- Docker Compose configuration
-- Basic service definitions
-- Network setup
-- Volume configuration
-
-### Phase 2: Service Configuration (Week 2)  
-- Kafka cluster configuration
-- ChromaDB setup
-- Zookeeper coordination
-- Health checks implementation
-
-### Phase 3: Deployment Automation (Week 3)
-- Deploy script development
-- System requirement validation
-- Error handling implementation
-- Status reporting
-
-### Phase 4: AWS Integration (Week 4)
-- Security group configuration
-- EC2 optimization
-- Documentation completion
-- Performance tuning
-
-### Phase 5: Monitoring & Testing (Week 5)
-- Monitoring stack implementation
-- Integration testing
-- Performance benchmarking
-- Documentation finalization
-
-## Maintenance and Operations
-
-### Regular Maintenance Tasks
-- Weekly log rotation and cleanup
-- Monthly security updates
-- Quarterly performance reviews
-- Backup validation testing
-
-### Scaling Considerations
-- Horizontal scaling: Upgrade to larger EC2 instances (t3.large, t3.xlarge)
-- Vertical scaling: Increase JVM heap size up to 2GB on larger instances  
-- Multi-broker deployment: Add additional brokers when moving to production
-- Auto-scaling based on resource utilization
-- Migration path: Single broker → Multi-broker cluster when needed
-
-### Troubleshooting Guide
-
-**Common Issues:**
-1. **Services won't start:** Check resource availability and logs
-2. **Connection timeouts:** Verify security group and network configuration  
-3. **Data loss:** Restore from backups, check replication settings
-4. **Performance issues:** Monitor resource usage, tune JVM settings
-5. **Deployment failures:** Validate system requirements, check Docker status
-
-**Debug Commands:**
 ```bash
-# Service status
-docker-compose ps
-docker-compose logs <service_name>
+# Health check utilities
+./scripts/check-kafka-connectivity.sh
+./scripts/verify-chromadb-collections.sh  
+./scripts/validate-security-groups.sh
+./scripts/test-topic-ingestion.sh
 
-# Resource usage  
-docker stats
-df -h /opt/data-pipeline
-
-# Network connectivity
-telnet <EC2_IP> 9092
-curl http://<EC2_IP>:8000/api/v1/heartbeat
-
-# Kafka testing
-kafka-topics.sh --bootstrap-server localhost:9092 --list
-kafka-console-producer.sh --bootstrap-server localhost:9092 --topic test
+# Performance monitoring
+./scripts/monitor-memory-usage.sh  # t3.large memory optimization
+./scripts/track-ebs-usage.sh       # Storage efficiency tracking
 ```
 
-This design provides a comprehensive, production-ready data pipeline infrastructure optimized for AWS deployment with strong emphasis on reliability, monitoring, and development productivity.
+This design provides a comprehensive, AWS-optimized architecture specifically tailored for the SHB/SCB comparative analysis case studies while ensuring robust data integrity and scalable performance on t3.large infrastructure.

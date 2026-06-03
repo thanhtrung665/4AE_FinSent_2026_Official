@@ -60,8 +60,9 @@ fb_test_003,"VN30 vượt ngưỡng kháng cự",2024-01-15 11:00:00,23"""
         """Test CSV format validation with missing file"""
         from facebook_mock_injector import FacebookMockInjector
         
+        # Create injector but prevent file creation by setting a completely invalid path
         injector = object.__new__(FacebookMockInjector)
-        injector.csv_file_path = "non_existent_file.csv"
+        injector.csv_file_path = "/invalid/path/non_existent_file.csv"
         injector.logger = MagicMock()
         
         result = injector.validate_csv_format()

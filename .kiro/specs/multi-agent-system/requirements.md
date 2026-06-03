@@ -1,175 +1,238 @@
 # Requirements Document
 
+## Multi-Agent System for Vietnam Market Sentiment Index (VMSI)
+
 ## Introduction
 
-Hệ thống Multi-Agent Controller (MAC) và Engine Toán học VMSI cho dự án FinSent-Agent là một hệ thống phân tích tình cảm thị trường tài chính tự động. Hệ thống tích hợp dữ liệu từ mạng xã hội và chính sách vĩ mô để tính toán chỉ số VMSI (Vietnam Market Sentiment Index) theo thời gian thực và cung cấp cảnh báo rủi ro tự động.
+The Multi-Agent System implements a distributed, fault-tolerant architecture for calculating the Vietnam Market Sentiment Index (VMSI) in real-time. This system orchestrates specialized agents using modern async patterns and robust error handling to process social media sentiment data and macroeconomic policies, producing reliable financial market indicators.
+
+The system integrates social media sentiment analysis (via PhoBERT processing) with policy sentiment evaluation from central bank communications to generate a composite market sentiment index. It features comprehensive error handling, connection pooling, dead letter queues, and automated risk assessment with Vietnamese-language warnings for extreme market conditions.
 
 ## Glossary
 
-- **MAC_System**: Multi-Agent Controller System - Hệ thống điều phối đa tác nhân
-- **VMSI_Engine**: Engine Toán học tính toán chỉ số VMSI
-- **Social_Agent**: Tác nhân xử lý dữ liệu mạng xã hội
-- **Macro_Agent**: Tác nhân xử lý dữ liệu chính sách vĩ mô
-- **Risk_Synthesis_Agent**: Tác nhân tổng hợp và cảnh báo rủi ro
-- **PhoBERT_Score**: Điểm sentiment từ model PhoBERT
-- **Interaction_Weight**: Trọng số tương tác = ln(1 + likes + shares + comments)
-- **Credibility_Factor**: Hệ số uy tín của nguồn thông tin
-- **EMA_Smoothing**: Exponential Moving Average smoothing cho chuỗi thời gian
-- **Kafka_Broker**: Hệ thống message broker để truyền dữ liệu
-- **ChromaDB_Collection**: Cơ sở dữ liệu vector lưu trữ văn bản chính sách
+- **Multi_Agent_System**: Distributed system architecture coordinating specialized agents for VMSI calculation using modern async patterns and error handling
+- **VMSI_Engine**: Mathematical computation module implementing vectorized NumPy operations for sentiment index calculations with comprehensive validation
+- **Social_Agent**: Asynchronous Kafka consumer agent processing PhoBERT sentiment data with connection pooling and dead letter queue management
+- **Macro_Agent**: ChromaDB semantic query agent with connection pooling, caching, and retry logic for policy sentiment analysis
+- **Risk_Synthesis_Agent**: Central coordination agent implementing risk assessment, Vietnamese warning generation, and atomic file operations
+- **MAC_System**: Multi-Agent Controller orchestrating agent lifecycles and workflow execution using deterministic routing
+- **PhoBERT_Score**: Vietnamese-language BERT sentiment score in range [-1, 1] representing negative to positive sentiment
+- **Interaction_Weight**: Logarithmic compression factor `ln(1 + likes + shares + comments)` applied to social media engagement metrics
+- **Credibility_Factor**: Dynamic source reputation weight ranging from 0.1 (suspicious/bot) to 1.0 (verified/institutional)
+- **NHNN_Policy_Score**: State Bank of Vietnam policy sentiment score in discrete set {-1, 0, 1} for restrictive, neutral, or accommodative policies
+- **Anti_FUD_Protocol**: Automated cross-validation system detecting and mitigating fake news impact on sentiment calculations
+- **Connection_Pool**: Managed database connection pool with health monitoring, retry logic, and automatic failover capabilities
+- **Dead_Letter_Queue**: Message queue system for handling failed or malformed Kafka messages with separate processing workflows
+- **Circuit_Breaker**: Fault tolerance pattern preventing cascade failures by temporarily isolating failed external services
+- **EMA_Smoothing**: Exponential Moving Average temporal filtering with λ=0.2 smoothing factor for index stability
+
+---
 
 ## Requirements
 
-### Requirement 1: VMSI Mathematical Engine Implementation
+### Requirement 1: VMSI Mathematical Engine with Comprehensive Validation
 
-**User Story:** Là một nhà phân tích tài chính, tôi muốn có một engine toán học chính xác tính toán chỉ số VMSI theo công thức chuẩn, để đảm bảo tính nhất quán và tin cậy của chỉ số.
-
-#### Acceptance Criteria
-
-1. THE VMSI_Engine SHALL implement social score calculation S_social(t) using numpy arrays for post data input
-2. WHEN calculating interaction weight, THE VMSI_Engine SHALL validate that likes, shares, and comments are non-negative before applying logarithm
-3. WHEN calculating interaction weight, THE VMSI_Engine SHALL use formula np.log(1 + likes + shares + comments)
-4. THE VMSI_Engine SHALL compute social score as sum of (PhoBERT_Score × Interaction_Weight × Credibility_Factor)
-5. THE VMSI_Engine SHALL calculate macro score S_macro(t) = 0.7 × S_nhnn + 0.3 × S_news
-6. THE VMSI_Engine SHALL compute raw index I_raw(t) = 0.6 × S_macro(t) + 0.4 × S_social(t)
-7. THE VMSI_Engine SHALL calculate final VMSI(t) = 50 × (I_raw(t) + 1)
-8. WHEN I_raw(t) is negative, THE VMSI_Engine SHALL return VMSI = 0 as specified by the formula
-9. THE VMSI_Engine SHALL apply EMA smoothing: VMSI_smoothed(t) = 0.2 × VMSI(t) + 0.8 × VMSI_smoothed(t-1)
-10. FOR ALL input arrays, THE VMSI_Engine SHALL validate data types and handle numpy array operations correctly
-11. FOR ALL mathematical operations, THE VMSI_Engine SHALL return precise floating-point results with error handling
-
-### Requirement 2: Social Agent Implementation
-
-**User Story:** Là một hệ thống phân tích, tôi muốn có một Social Agent tự động đọc dữ liệu sentiment từ Kafka và tính toán điểm mạng xã hội, để xử lý dữ liệu theo thời gian thực.
+**User Story:** As a quantitative analyst, I want a robust mathematical engine implementing VMSI calculations with comprehensive input validation and error handling, so that the computed sentiment index accurately reflects market conditions without computational errors.
 
 #### Acceptance Criteria
 
-1. THE Social_Agent SHALL consume messages from Kafka topic 'sentiment_scored_data'
-2. WHEN receiving sentiment data, THE Social_Agent SHALL extract PhoBERT scores from message payloads
-3. THE Social_Agent SHALL call VMSI_Engine.calculate_social_score() function with extracted data
-4. THE Social_Agent SHALL handle Kafka connection errors with automatic retry mechanism
-5. WHEN messages are actually processed, THE Social_Agent SHALL log processing statistics including messages processed per second
-6. WHEN error logging fails, THE Social_Agent SHALL stop processing and report failure
-7. WHEN data format is invalid, THE Social_Agent SHALL log error and continue processing other messages
-8. THE Social_Agent SHALL maintain connection to Kafka_Broker using confluent-kafka library
-9. FOR ALL processed messages, THE Social_Agent SHALL return S_social(t) score to Risk_Synthesis_Agent
+1. THE VMSI_Engine SHALL implement interaction weight calculation using the logarithmic formula `E_i = ln(1 + likes_i + shares_i + comments_i)` with non-negative integer validation
+2. THE VMSI_Engine SHALL validate PhoBERT scores are within range [-1, 1] and credibility factors within range [0.1, 1.0] before computation
+3. THE VMSI_Engine SHALL compute social sentiment score using the weighted formula `S_social(t) = Σ(s_i × E_i × R_i) / Σ(E_i × R_i)` where division by zero returns 0.0
+4. THE VMSI_Engine SHALL calculate macroeconomic policy score using the weighted formula `S_macro(t) = 0.7 × S_nhnn(t) + 0.3 × S_news(t)`
+5. WHEN calculating macro scores, THE VMSI_Engine SHALL validate S_nhnn is in the discrete set {-1, 0, 1}
+6. THE VMSI_Engine SHALL compute raw market index using the weighted combination `I_raw(t) = 0.6 × S_macro(t) + 0.4 × S_social(t)`
+7. THE VMSI_Engine SHALL transform raw index to bounded scale using `VMSI(t) = 50 × (I_raw(t) + 1)` with negative boundary condition handling returning VMSI = 0
+8. THE VMSI_Engine SHALL apply exponential moving average smoothing using `VMSI_smoothed(t) = 0.2 × VMSI(t) + 0.8 × VMSI_smoothed(t-1)`
+9. THE VMSI_Engine SHALL validate all intermediate calculations produce finite floating-point values and raise VMSICalculationError for non-finite results
+10. THE VMSI_Engine SHALL log calculation details at DEBUG level and final results at INFO level for audit traceability
 
-### Requirement 3: Macro Agent Implementation  
+---
 
-**User Story:** Là một nhà phân tích chính sách, tôi muốn có một Macro Agent tự động truy vấn và đánh giá văn bản chính sách NHNN, để có được điểm số vĩ mô kịp thời.
+### Requirement 2: Social Agent with Enhanced Kafka Integration
 
-#### Acceptance Criteria
-
-1. THE Macro_Agent SHALL query ChromaDB collection 'macro_policies' for NHNN policy documents
-2. THE Macro_Agent SHALL analyze policy sentiment and return S_nhnn score (1 or -1)
-3. THE Macro_Agent SHALL generate Vietnamese language policy summary for each analysis
-4. WHEN no relevant policies found, THE Macro_Agent SHALL always return neutral score (0) regardless of any incorrect intermediate scores
-5. THE Macro_Agent SHALL use semantic similarity search for policy relevance matching
-6. THE Macro_Agent SHALL handle ChromaDB connection timeouts with retry logic
-7. FOR ALL policy analysis, THE Macro_Agent SHALL provide confidence level (0.0 to 1.0)
-8. THE Macro_Agent SHALL return structured output with S_nhnn, summary, and confidence to Risk_Synthesis_Agent
-
-### Requirement 4: Risk and Synthesis Agent Implementation
-
-**User Story:** Là một nhà quản lý rủi ro, tôi muốn có một agent tổng hợp kết quả và tự động cảnh báo khi chỉ số VMSI ở mức nguy hiểm, để phản ứng kịp thời với rủi ro thị trường.
+**User Story:** As a data processing pipeline, I want a robust Social Agent with advanced Kafka integration including connection pooling, dead letter queues, and comprehensive error handling, so that social media sentiment data is reliably processed without message loss.
 
 #### Acceptance Criteria
 
-1. THE Risk_Synthesis_Agent SHALL receive S_social(t) from Social_Agent and S_nhnn from Macro_Agent
-2. THE Risk_Synthesis_Agent SHALL call VMSI_Engine to compute final VMSI_smoothed(t) value
-3. WHEN VMSI_smoothed ≤ 20, THE Risk_Synthesis_Agent SHALL generate Vietnamese risk warning text using LLM
-4. WHEN VMSI_smoothed ≥ 81, THE Risk_Synthesis_Agent SHALL generate Vietnamese risk warning text using LLM  
-5. THE Risk_Synthesis_Agent SHALL save output to 'live_vmsi.json' in standard JSON format (not JSONL)
-6. THE Risk_Synthesis_Agent SHALL include VMSI value, status, and warning text in output file
-7. THE Risk_Synthesis_Agent SHALL overwrite previous 'live_vmsi.json' file on each update
-8. FOR ALL LLM-generated warnings, THE Risk_Synthesis_Agent SHALL ensure text is in Vietnamese language
-9. THE Risk_Synthesis_Agent SHALL log processing timestamps for audit trail
+1. THE Social_Agent SHALL connect to the Kafka cluster using the `confluent-kafka` library with configurable connection parameters and consumer group management
+2. THE Social_Agent SHALL consume messages exclusively from the `sentiment_scored_data` topic with automatic offset management and commit strategies
+3. THE Social_Agent SHALL implement exponential backoff retry strategy with configurable parameters (max_retries=5, base_delay=1.0s, max_delay=60.0s, jitter_factor=0.25)
+4. THE Social_Agent SHALL utilize a Dead Letter Queue (DLQ) system to redirect malformed or unparseable JSON messages away from the primary processing pipeline
+5. WHEN extracting PhoBERT scores, THE Social_Agent SHALL validate message structure contains required fields `sentiment.label`, `sentiment.confidence` and convert to range [-1, 1]
+6. THE Social_Agent SHALL extract interaction metrics `likes`, `shares`, `comments` with non-negative validation and default values of 0
+7. THE Social_Agent SHALL extract credibility factors from message metadata with range validation [0.1, 1.0] and default fallback of 0.5
+8. THE Social_Agent SHALL process messages in configurable batches (default 100) with timeout controls for efficient throughput
+9. THE Social_Agent SHALL log processing statistics every 5 seconds including message throughput, error rates, and consumer lag metrics
+10. WHEN Kafka connection failures occur, THE Social_Agent SHALL implement circuit breaker pattern and graceful degradation to cached or neutral values
 
-### Requirement 5: LangChain Multi-Agent Controller Integration
+---
 
-**User Story:** Là một kỹ sư hệ thống, tôi muốn có một controller tích hợp LangChain để điều phối các agent hoạt động đồng bộ, để đảm bảo luồng dữ liệu mượt mà và quản lý lỗi hiệu quả.
+### Requirement 3: Macro Agent with Advanced ChromaDB Integration
 
-#### Acceptance Criteria
-
-1. THE MAC_System SHALL use LangChain framework for agent orchestration and coordination
-2. THE MAC_System SHALL implement sequential workflow: Social_Agent → Macro_Agent → Risk_Synthesis_Agent
-3. THE MAC_System SHALL handle agent failures with graceful degradation and error reporting
-4. WHEN any agent fails, THE MAC_System SHALL log detailed error information and continue with available data
-5. THE MAC_System SHALL implement configurable timeout for each agent operation (default 30 seconds)
-6. THE MAC_System SHALL provide health check endpoint for monitoring agent status
-7. THE MAC_System SHALL support parallel execution of Social_Agent and Macro_Agent when possible
-8. FOR ALL agent communications, THE MAC_System SHALL use structured data formats with validation
-
-### Requirement 6: Kafka Integration and Data Flow
-
-**User Story:** Là một kỹ sư dữ liệu, tôi muốn hệ thống tích hợp mượt mà với Kafka topics hiện tại, để tận dụng cơ sở hạ tầng dữ liệu đã có.
+**User Story:** As a policy analysis system, I want an enhanced Macro Agent with connection pooling, query caching, and semantic similarity search capabilities, so that central bank policy sentiment analysis is performed efficiently and reliably.
 
 #### Acceptance Criteria
 
-1. THE MAC_System SHALL connect to existing Kafka topic 'sentiment_scored_data' from nlp_engine/sentiment_worker.py
-2. THE MAC_System SHALL handle Kafka consumer group management and offset tracking
-3. THE MAC_System SHALL implement dead letter queue for failed message processing
-4. WHEN Kafka connection is lost, THE MAC_System SHALL implement exponential backoff retry strategy
-5. WHEN non-exponential backoff strategies are configured, THE MAC_System SHALL reject the configuration and fail to start
-6. THE MAC_System SHALL process Kafka messages in real-time with minimal latency (<5 seconds)
-7. THE MAC_System SHALL maintain Kafka consumer offset persistence across system restarts
-8. FOR ALL Kafka operations, THE MAC_System SHALL use confluent-kafka library for consistency
+1. THE Macro_Agent SHALL connect to ChromaDB using a managed connection pool with configurable pool size (default 5 connections) and health monitoring
+2. THE Macro_Agent SHALL implement query result caching with configurable TTL (default 300 seconds) to optimize repeated policy lookups
+3. THE Macro_Agent SHALL perform semantic similarity queries against the `macro_policies` collection with configurable similarity threshold (default 0.7)
+4. THE Macro_Agent SHALL limit document retrieval to a maximum of k=5 most relevant policy documents per query
+5. THE Macro_Agent SHALL analyze retrieved policy documents using Vietnamese keyword-based sentiment analysis for positive/negative/neutral classification
+6. WHEN policy sentiment analysis is performed, THE Macro_Agent SHALL output discrete NHNN scores in the set {-1, 0, 1} representing restrictive, neutral, or accommodative policies
+7. THE Macro_Agent SHALL generate Vietnamese-language policy summaries including document count, average similarity, and confidence metrics
+8. THE Macro_Agent SHALL implement fallback strategies using cached results when ChromaDB connections fail
+9. THE Macro_Agent SHALL log performance metrics including cache hit rates, query response times, and connection health status
+10. WHEN no relevant policies are found above the similarity threshold, THE Macro_Agent SHALL return neutral score (0) with appropriate Vietnamese explanation
 
-### Requirement 7: ChromaDB Integration and Policy Retrieval
+---
 
-**User Story:** Là một nhà phân tích chính sách, tôi muốn hệ thống truy cập hiệu quả vào kho văn bản chính sách đã được vector hóa, để có phân tích nhanh và chính xác.
+### Requirement 4: Risk Synthesis Agent with Automated Assessment
 
-#### Acceptance Criteria
-
-1. THE MAC_System SHALL connect to ChromaDB collection 'macro_policies' from nlp_engine/nhnn_ingester.py
-2. THE MAC_System SHALL implement semantic search with configurable similarity threshold (default 0.7)
-3. THE MAC_System SHALL cache frequent policy queries to reduce ChromaDB load
-4. WHEN ChromaDB is unavailable, THE MAC_System SHALL use cached results or fallback to neutral scoring
-5. THE MAC_System SHALL limit policy document retrieval to top-k relevant results (default k=5)
-6. THE MAC_System SHALL implement connection pooling for ChromaDB queries
-7. FOR ALL policy retrievals, THE MAC_System SHALL log query performance metrics
-
-### Requirement 8: Output JSON Format and File Management
-
-**User Story:** Là một hệ thống downstream, tôi muốn nhận dữ liệu VMSI theo format JSON chuẩn và nhất quán, để tích hợp dễ dàng với các component khác.
+**User Story:** As a risk management system, I want a comprehensive Risk Synthesis Agent that orchestrates final VMSI calculation, implements automated risk assessment with Vietnamese warnings, and provides atomic file operations for reliable output, so that market risk conditions are accurately communicated to stakeholders.
 
 #### Acceptance Criteria
 
-1. THE MAC_System SHALL output results to 'live_vmsi.json' in standard JSON format only
-2. THE MAC_System SHALL include fields: vmsi_value, timestamp, status, risk_warning, component_scores
-3. THE MAC_System SHALL ensure JSON output is valid and parseable by standard JSON parsers
-4. WHEN file write fails, THE MAC_System SHALL retry write operation up to 3 times
-5. THE MAC_System SHALL create backup of previous 'live_vmsi.json' before overwriting
-6. THE MAC_System SHALL validate JSON schema before writing to file
-7. THE MAC_System SHALL include processing metadata: processing_time, agent_versions, data_sources
-8. FOR ALL timestamps, THE MAC_System SHALL use ISO 8601 format with UTC timezone
+1. THE Risk_Synthesis_Agent SHALL receive and validate social scores from Social_Agent with finite value checking and appropriate error handling
+2. THE Risk_Synthesis_Agent SHALL receive and validate macro scores and metadata from Macro_Agent including policy summaries and confidence levels
+3. THE Risk_Synthesis_Agent SHALL coordinate with VMSI_Engine to compute final index values using the complete mathematical pipeline
+4. THE Risk_Synthesis_Agent SHALL assess risk levels using threshold-based classification: ≤20 (extreme panic), ≥81 (extreme euphoria), normal (21-80)
+5. WHEN extreme risk conditions are detected (VMSI ≤20 or ≥81), THE Risk_Synthesis_Agent SHALL generate Vietnamese-language risk warnings with appropriate severity indicators
+6. THE Risk_Synthesis_Agent SHALL save results to `live_vmsi.json` using atomic file operations with backup creation and retry logic (max 3 attempts)
+7. THE Risk_Synthesis_Agent SHALL validate output JSON structure against schema including required fields: vmsi_value, timestamp, status, risk_warning, component_scores
+8. THE Risk_Synthesis_Agent SHALL include comprehensive processing metadata with timing, data source availability, and calculation details
+9. THE Risk_Synthesis_Agent SHALL implement state management for EMA smoothing across multiple calculation cycles
+10. WHEN file write operations fail, THE Risk_Synthesis_Agent SHALL restore from backup and raise FileOperationError with detailed error context
 
-### Requirement 9: Error Handling and System Resilience
+---
 
-**User Story:** Là một người vận hành hệ thống, tôi muốn hệ thống xử lý lỗi một cách thông minh và tiếp tục hoạt động khi gặp sự cố, để đảm bảo tính sẵn sàng cao.
+### Requirement 5: Multi-Agent System Orchestration and Workflow Management
 
-#### Acceptance Criteria
-
-1. THE MAC_System SHALL implement circuit breaker pattern for external service calls
-2. WHEN external services are unavailable, THE MAC_System SHALL always use whatever cached data or default values are available
-3. THE MAC_System SHALL log all errors with severity levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
-4. THE MAC_System SHALL implement health monitoring for each agent component
-5. WHEN system resources are low, THE MAC_System SHALL implement graceful degradation
-6. THE MAC_System SHALL provide system status dashboard with component health indicators
-7. FOR ALL exceptions, THE MAC_System SHALL capture stack traces and context information
-8. THE MAC_System SHALL implement automated recovery procedures for common failure scenarios
-
-### Requirement 10: Performance and Scalability Requirements
-
-**User Story:** Là một kỹ sư hiệu năng, tôi muốn hệ thống xử lý dữ liệu nhanh và có thể mở rộng theo khối lượng, để đáp ứng nhu cầu tăng trưởng.
+**User Story:** As a system architect, I want a robust multi-agent orchestration system with deterministic workflow execution, timeout management, and comprehensive error handling, so that the VMSI calculation pipeline operates reliably under various system conditions.
 
 #### Acceptance Criteria
 
-1. THE MAC_System SHALL process end-to-end pipeline within 10 seconds for normal data volumes
-2. THE MAC_System SHALL handle up to 1000 social media posts per minute processing capacity
-3. THE MAC_System SHALL implement memory usage monitoring with alerts at 80% threshold
-4. THE MAC_System SHALL support horizontal scaling through containerization (Docker support)
-5. WHEN system load exceeds capacity, THE MAC_System SHALL implement backpressure mechanisms
-6. THE MAC_System SHALL optimize numpy operations using vectorized calculations
-7. THE MAC_System SHALL implement database connection pooling for ChromaDB and Kafka
-8. FOR ALL performance metrics, THE MAC_System SHALL expose Prometheus-compatible monitoring endpoints
+1. THE Multi_Agent_System SHALL implement deterministic sequential workflow execution: Social_Agent → Macro_Agent → Risk_Synthesis_Agent → Output Generation
+2. THE Multi_Agent_System SHALL enforce configurable timeout limits for individual agent operations (default 30 seconds) with graceful degradation on timeout
+3. THE Multi_Agent_System SHALL implement circuit breaker patterns for external service dependencies (Kafka, ChromaDB) with automatic recovery strategies
+4. THE Multi_Agent_System SHALL provide centralized logging with structured context including agent names, operation types, and execution timing
+5. WHEN individual agents encounter recoverable errors, THE Multi_Agent_System SHALL implement retry logic with exponential backoff before workflow failure
+6. THE Multi_Agent_System SHALL maintain agent health monitoring with periodic status checks and automatic restart capabilities for failed agents
+7. THE Multi_Agent_System SHALL implement graceful shutdown procedures ensuring proper cleanup of connections and resources
+8. THE Multi_Agent_System SHALL provide workflow execution metrics including end-to-end processing time, success rates, and error classifications
+9. THE Multi_Agent_System SHALL support configuration management with environment-based parameter loading and validation
+10. WHEN complete workflow failures occur, THE Multi_Agent_System SHALL implement fallback strategies using cached data or neutral baseline values
+
+---
+
+### Requirement 6: Advanced Message Queue Integration with Fault Tolerance
+
+**User Story:** As a data infrastructure engineer, I want sophisticated message queue integration with dead letter queues, connection pooling, and comprehensive error handling, so that data ingestion remains reliable under high load and network issues.
+
+#### Acceptance Criteria
+
+1. THE Multi_Agent_System SHALL integrate with Apache Kafka using the high-performance `confluent-kafka` library with connection pooling and health monitoring
+2. THE Multi_Agent_System SHALL implement Dead Letter Queue (DLQ) topology to isolate malformed, unparseable, or repeatedly failing messages from the primary data pipeline
+3. THE Multi_Agent_System SHALL implement configurable consumer group management with automatic rebalancing and offset commit strategies
+4. THE Multi_Agent_System SHALL provide exponential backoff retry mechanisms for transient network failures with configurable parameters and maximum retry limits
+5. WHEN Kafka broker connectivity is lost, THE Multi_Agent_System SHALL implement circuit breaker logic to prevent resource exhaustion and enable graceful degradation
+6. THE Multi_Agent_System SHALL monitor and log consumer lag metrics, partition assignment status, and throughput statistics for operational visibility
+7. THE Multi_Agent_System SHALL implement message validation pipelines with JSON schema checking and content verification before processing
+8. THE Multi_Agent_System SHALL provide configurable batch processing capabilities to optimize throughput while maintaining low latency for real-time requirements
+9. THE Multi_Agent_System SHALL implement graceful consumer shutdown with proper offset commits and resource cleanup on system termination
+10. WHEN DLQ processing is triggered, THE Multi_Agent_System SHALL log detailed failure reasons and provide mechanisms for message reprocessing after issue resolution
+
+---
+
+### Requirement 7: High-Performance Vector Database Operations with Connection Management
+
+**User Story:** As a database administrator, I want optimized vector database operations with connection pooling, query caching, and performance monitoring, so that semantic policy searches are performed efficiently without overwhelming database resources.
+
+#### Acceptance Criteria
+
+1. THE Multi_Agent_System SHALL connect to ChromaDB using managed connection pools with configurable pool sizes, connection timeouts, and health monitoring
+2. THE Multi_Agent_System SHALL implement query result caching with TTL-based expiration (default 300 seconds) to reduce redundant vector computations
+3. THE Multi_Agent_System SHALL enforce semantic similarity filtering with configurable thresholds (default 0.7) to ensure query result relevance
+4. THE Multi_Agent_System SHALL limit document retrieval to configurable maximum results (default k=5) to control resource usage and response times
+5. THE Multi_Agent_System SHALL implement connection health monitoring with automatic reconnection and failover capabilities for database resilience  
+6. THE Multi_Agent_System SHALL provide query performance metrics including response times, cache hit rates, and connection pool utilization
+7. THE Multi_Agent_System SHALL implement graceful degradation strategies when vector database services become unavailable, utilizing cached results as fallback
+8. THE Multi_Agent_System SHALL validate vector search results for completeness and quality before proceeding with sentiment analysis
+9. THE Multi_Agent_System SHALL implement connection cleanup and resource management to prevent memory leaks and connection exhaustion
+10. WHEN database connection failures exceed threshold limits, THE Multi_Agent_System SHALL trigger circuit breaker protection and alert monitoring systems
+
+---
+
+### Requirement 8: Robust Output Management with Atomic File Operations
+
+**User Story:** As an application developer, I want reliable JSON output generation with atomic file operations, comprehensive validation, and backup management, so that downstream systems can safely consume VMSI data without risk of corruption or incomplete writes.
+
+#### Acceptance Criteria
+
+1. THE Multi_Agent_System SHALL generate output exclusively in standard JSON format to file `live_vmsi.json` with proper UTF-8 encoding and formatting
+2. THE Multi_Agent_System SHALL implement atomic file write operations using temporary files and atomic rename to prevent partial writes during system failures
+3. THE Multi_Agent_System SHALL validate output JSON structure against predefined schema including required fields: vmsi_value, timestamp, status, risk_warning, component_scores
+4. THE Multi_Agent_System SHALL create automatic backup files (`live_vmsi.json.backup`) before each write operation to enable recovery from corruption
+5. THE Multi_Agent_System SHALL implement retry logic for file operations with exponential backoff (maximum 3 attempts) before raising FileOperationError
+6. THE Multi_Agent_System SHALL include comprehensive metadata in output including processing timestamps, agent versions, data source statistics, and calculation details
+7. THE Multi_Agent_System SHALL use ISO 8601 timestamp format with explicit UTC timezone specification for all temporal data
+8. THE Multi_Agent_System SHALL validate numerical outputs for finite values and appropriate ranges before serialization
+9. THE Multi_Agent_System SHALL implement file locking mechanisms to prevent concurrent write operations and data corruption
+10. WHEN file write operations fail due to permissions or disk space, THE Multi_Agent_System SHALL restore previous valid state from backup and log detailed error context
+
+---
+
+### Requirement 9: Comprehensive Fault Tolerance and Circuit Breaking
+
+**User Story:** As a system reliability engineer, I want comprehensive fault tolerance mechanisms including circuit breakers, health monitoring, and graceful degradation, so that the system remains operational even when external dependencies fail.
+
+#### Acceptance Criteria  
+
+1. THE Multi_Agent_System SHALL implement circuit breaker patterns for all external service dependencies including Kafka brokers, ChromaDB, and file system operations
+2. THE Multi_Agent_System SHALL monitor service health with configurable thresholds for failure rates, response times, and consecutive failures before triggering circuit breakers
+3. THE Multi_Agent_System SHALL provide graceful degradation strategies including cached data utilization, neutral baseline values, and reduced functionality modes
+4. THE Multi_Agent_System SHALL implement exponential backoff retry strategies with jitter for transient failures while respecting circuit breaker states
+5. WHEN external services become unavailable, THE Multi_Agent_System SHALL log detailed failure context and switch to appropriate fallback mechanisms
+6. THE Multi_Agent_System SHALL monitor system resource utilization including memory usage, connection counts, and processing queue depths
+7. THE Multi_Agent_System SHALL implement automatic recovery detection and circuit breaker reset when external services return to healthy operation
+8. THE Multi_Agent_System SHALL provide operational dashboards or metrics endpoints for monitoring system health, performance, and failure patterns
+9. THE Multi_Agent_System SHALL implement configurable alerting thresholds for critical failures, resource exhaustion, and service degradation
+10. WHEN cascading failures are detected, THE Multi_Agent_System SHALL implement emergency shutdown procedures with proper resource cleanup and state preservation
+
+---
+
+### Requirement 10: Performance Monitoring and Scalability Management
+
+**User Story:** As a performance engineer, I want comprehensive performance monitoring with configurable metrics collection and scalability benchmarks, so that the system can handle production workloads efficiently and provide operational visibility.
+
+#### Acceptance Criteria
+
+1. THE Multi_Agent_System SHALL achieve end-to-end processing latency of ≤10 seconds under normal load conditions from data ingestion to JSON file generation
+2. THE Multi_Agent_System SHALL support processing throughput of up to 1,000 social media messages per minute without performance degradation
+3. THE Multi_Agent_System SHALL implement comprehensive metrics collection including processing times, throughput rates, error counts, and resource utilization
+4. THE Multi_Agent_System SHALL provide Prometheus-compatible metrics endpoints for integration with external monitoring and alerting systems
+5. THE Multi_Agent_System SHALL monitor and log key performance indicators including agent execution times, database query performance, and file I/O operations
+6. THE Multi_Agent_System SHALL implement configurable performance thresholds with automatic alerting when SLA targets are not met
+7. THE Multi_Agent_System SHALL provide performance profiling capabilities to identify bottlenecks and optimization opportunities
+8. THE Multi_Agent_System SHALL implement load balancing strategies for parallel processing when multiple instances are deployed
+9. THE Multi_Agent_System SHALL monitor memory usage patterns and implement garbage collection optimization to prevent memory leaks
+10. WHEN performance degradation is detected, THE Multi_Agent_System SHALL automatically adjust processing parameters including batch sizes, timeout values, and connection pool sizes
+
+---
+
+### Requirement 11: Comprehensive Logging and Observability
+
+**User Story:** As a system operations engineer, I want structured logging with contextual information and comprehensive observability features, so that system behavior can be monitored, debugged, and optimized effectively in production environments.
+
+#### Acceptance Criteria
+
+1. THE Multi_Agent_System SHALL implement structured logging with configurable log levels (DEBUG, INFO, WARNING, ERROR, CRITICAL) and JSON formatting for machine parsing
+2. THE Multi_Agent_System SHALL include contextual information in all log entries including agent names, operation IDs, timestamps, and execution context
+3. THE Multi_Agent_System SHALL log mathematical calculation steps at DEBUG level and final results at INFO level for audit traceability and debugging
+4. THE Multi_Agent_System SHALL implement correlation IDs to trace requests across multiple agents and operations in the processing pipeline
+5. THE Multi_Agent_System SHALL log performance metrics including execution times, resource usage, and throughput statistics at regular intervals
+6. THE Multi_Agent_System SHALL capture and log error stack traces with sufficient context for debugging while sanitizing sensitive information
+7. THE Multi_Agent_System SHALL implement log aggregation capabilities compatible with centralized logging systems (ELK, Splunk, etc.)
+8. THE Multi_Agent_System SHALL provide log level configuration through environment variables or configuration files without code changes
+9. THE Multi_Agent_System SHALL implement log rotation and retention policies to manage disk usage while preserving audit trails
+10. WHEN critical errors occur that affect system availability, THE Multi_Agent_System SHALL log emergency-level messages and trigger alerting mechanisms
