@@ -18,8 +18,8 @@ class FacebookMockInjector(BaseKafkaProducer):
         super().__init__(topic='fb_mock_data')
         
         # Configuration
-        self.csv_file_path = os.getenv('FACEBOOK_MOCK_CSV', 'facebook_mock.csv')
-        self.delay_seconds = float(os.getenv('FB_MOCK_DELAY_SECONDS', 1.0))
+        self.csv_file_path = os.getenv('FB_MOCK_FILE_PATH', 'facebook_mock.csv')
+        self.delay_seconds = float(os.getenv('FB_MOCK_STREAM_DELAY', 1.0))
         
         # Validate CSV file exists
         if not os.path.exists(self.csv_file_path):

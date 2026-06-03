@@ -20,7 +20,7 @@ class MarketDataProducer(BaseKafkaProducer):
         # Configuration
         self.interval_seconds = int(os.getenv('MARKET_DATA_INTERVAL_SECONDS', 60))
         self.tickers = os.getenv('VNSTOCK_TICKERS', 'VNINDEX,VN30').split(',')
-        self.tickers = [ticker.strip() for ticker in self.tickers]
+        self.tickers = [ticker.strip() for ticker in self.tickers if ticker.strip()]
         
         # Validate tickers
         if not self.tickers:
@@ -383,8 +383,9 @@ class MarketDataProducer(BaseKafkaProducer):
         try:
             self.logger.info("Testing vnstock connection...")
             
-            # Try to get a simple stock list
-            test_data = stock.listing_companies()
+            # Try to get a simple stock list using the correct API
+            listing = stock.Listing()
+            test_data = listing.all_symbols()
             
             if test_data is not None and not test_data.empty:
                 self.logger.info("vnstock connection test successful")
