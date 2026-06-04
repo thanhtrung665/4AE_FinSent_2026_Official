@@ -101,8 +101,8 @@ MARKET_DATA_INTERVAL_SECONDS=60
 VNSTOCK_TICKERS=VNINDEX,VN30
 
 # Facebook Mock Configuration
-FACEBOOK_MOCK_CSV=facebook_mock.csv
-FB_MOCK_DELAY_SECONDS=1
+FB_MOCK_FILE_PATH=facebook_mock.csv
+FB_MOCK_STREAM_DELAY=1
 
 # Intervals (phút)
 RSS_INTERVAL_MINUTES=30
@@ -383,7 +383,7 @@ ERROR - vnstock connection test failed
 WARNING - CSV file not found: facebook_mock.csv
 ```
 - Tạo file facebook_mock.csv theo format mẫu
-- Check đường dẫn file trong FACEBOOK_MOCK_CSV
+- Check đường dẫn file trong FB_MOCK_FILE_PATH
 - Verify file permissions
 
 **7. Market Data Validation Error**
@@ -453,7 +453,7 @@ RETRY_BACKOFF_SECONDS=5
 
 # Respectful delays
 F319_DELAY_SECONDS=3
-FB_MOCK_DELAY_SECONDS=2
+FB_MOCK_STREAM_DELAY=2
 
 # Disable mock injector in production
 RUN_MOCK_INJECTOR=false
@@ -472,7 +472,7 @@ RETRY_BACKOFF_SECONDS=1
 
 # Faster processing
 F319_DELAY_SECONDS=1
-FB_MOCK_DELAY_SECONDS=0.5
+FB_MOCK_STREAM_DELAY=0.5
 
 # Enable mock injector for testing
 RUN_MOCK_INJECTOR=true
@@ -510,7 +510,7 @@ RUN_MOCK_INJECTOR=true
 
 ### Thêm CSV Data Sources Mới
 1. Create new CSV file theo format chuẩn
-2. Update FACEBOOK_MOCK_CSV path
+2. Update FB_MOCK_FILE_PATH path
 3. Verify với `validate_csv_format()`
 
 ### Custom Data Processing

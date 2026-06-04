@@ -2,16 +2,18 @@
 
 ## Overview
 
-The Multi-Agent Controller (MAC) and VMSI Mathematical Engine is a sophisticated financial sentiment analysis system designed to process real-time social media and macroeconomic data. The system orchestrates multiple specialized agents using [LangChain's multi-agent framework](https://blog.langchain.com/langgraph-multi-agent-workflows/), implementing a sequential workflow pattern to calculate the Vietnam Market Sentiment Index (VMSI) and provide automated risk alerts.
+The Multi-Agent System implements a distributed, fault-tolerant architecture for calculating the Vietnam Market Sentiment Index (VMSI) in real-time. This system orchestrates specialized agents using modern async patterns and robust error handling to process social media sentiment data and macroeconomic policies, producing reliable financial market indicators.
+
+The system integrates social media sentiment analysis (via PhoBERT processing) with policy sentiment evaluation from central bank communications to generate a composite market sentiment index. It features comprehensive error handling, connection pooling, dead letter queues, and automated risk assessment with Vietnamese-language warnings for extreme market conditions.
 
 ### System Architecture Vision
 
 The system follows a modular agent-based architecture where each agent has a specific responsibility:
-- **VMSI Engine**: Pure mathematical computation engine for index calculation
-- **Social Agent**: Processes sentiment-scored social media data from Kafka
-- **Macro Agent**: Analyzes macroeconomic policies using semantic search
-- **Risk Synthesis Agent**: Orchestrates final computation and risk assessment
-- **MAC System**: LangChain-based controller coordinating all agents
+- **VMSI_Engine**: Mathematical computation module implementing vectorized NumPy operations for sentiment index calculations with comprehensive validation
+- **Social_Agent**: Asynchronous Kafka consumer agent processing PhoBERT sentiment data with connection pooling and dead letter queue management  
+- **Macro_Agent**: ChromaDB semantic query agent with connection pooling, caching, and retry logic for policy sentiment analysis
+- **Risk_Synthesis_Agent**: Central coordination agent implementing risk assessment, Vietnamese warning generation, and atomic file operations
+- **MAC_System**: Multi-Agent Controller orchestrating agent lifecycles and workflow execution using deterministic routing
 
 The design prioritizes reliability, performance, and maintainability by implementing circuit breaker patterns, exponential backoff retry strategies, and comprehensive error handling throughout the data pipeline.
 
@@ -26,8 +28,8 @@ graph TB
         C[ChromaDB: macro_policies]
     end
     
-    subgraph "Multi-Agent Controller (MAC)"
-        MAC[LangChain MAC Controller]
+    subgraph "Multi-Agent System"
+        MAC[Multi-Agent Controller]
         
         subgraph "Agent Layer"
             SA[Social Agent]
@@ -40,9 +42,10 @@ graph TB
         end
     end
     
-    subgraph "Output"
+    subgraph "Output & Monitoring"
         JSON[live_vmsi.json]
-        MON[Monitoring/Health]
+        MON[Performance Monitoring]
+        LOG[Structured Logging]
     end
     
     K --> SA
@@ -53,158 +56,245 @@ graph TB
     VME --> RSA
     RSA --> JSON
     MAC --> MON
+    MAC --> LOG
     
     MAC -.-> SA
     MAC -.-> MA
     MAC -.-> RSA
 ```
-
 ### Agent Communication Flow
 
-The system implements a sequential workflow with the following data flow:
+The system implements a deterministic sequential workflow with the following data flow:
 
-1. **Initialization Phase**: MAC System initializes all agents and validates connections
-2. **Data Acquisition Phase**: Social Agent consumes from Kafka, Macro Agent queries ChromaDB
-3. **Processing Phase**: Both agents process data concurrently when possible
-4. **Synthesis Phase**: Risk Synthesis Agent receives results and computes final VMSI
-5. **Output Phase**: System outputs results to JSON file with risk assessment
+1. **Initialization Phase**: Multi-Agent Controller initializes all agents and validates external connections
+2. **Data Acquisition Phase**: Social Agent consumes from Kafka, Macro Agent queries ChromaDB (parallel execution when possible)
+3. **Processing Phase**: Both agents process data with comprehensive validation and error handling
+4. **Synthesis Phase**: Risk Synthesis Agent receives results and orchestrates VMSI computation
+5. **Output Phase**: System outputs results to JSON file with risk assessment and Vietnamese warnings
 
-### Resilience Patterns
+### Resilience and Fault Tolerance Patterns
 
-The architecture implements multiple resilience patterns:
-- **Circuit Breaker Pattern**: For external service calls (Kafka, ChromaDB)
-- **Exponential Backoff**: For retry mechanisms
-- **Graceful Degradation**: System continues with partial data when components fail
-- **Health Monitoring**: Each component exposes health status
+The architecture implements comprehensive resilience patterns:
+- **Circuit Breaker Pattern**: For external service calls (Kafka, ChromaDB) with configurable thresholds
+- **Exponential Backoff with Jitter**: For retry mechanisms with configurable parameters
+- **Dead Letter Queue**: For malformed or unparseable messages
+- **Graceful Degradation**: System continues with cached/neutral values when components fail
+- **Connection Pooling**: Managed connection pools with health monitoring for all external services
+- **Atomic File Operations**: Backup creation and retry logic for reliable output generation
 
 ## Components and Interfaces
 
 ### 1. VMSI Mathematical Engine
 
-**Purpose**: Pure computation engine implementing VMSI mathematical formulas
+**Purpose**: Pure computation engine implementing VMSI mathematical formulas with comprehensive validation
 
 **Key Interfaces**:
 ```python
 class VMSIEngine:
+    def calculate_interaction_weight(self, likes: int, shares: int, comments: int) -> float
+        """Calculate E_i = ln(1 + likes_i + shares_i + comments_i)"""
+    
+    def validate_inputs(self, phobert_scores: np.ndarray, credibility_factors: np.ndarray) -> None
+        """Validate PhoBERT scores [-1, 1] and credibility [0.1, 1.0]"""
+    
     def calculate_social_score(self, 
                               phobert_scores: np.ndarray,
                               interaction_weights: np.ndarray, 
                               credibility_factors: np.ndarray) -> float
+        """Calculate S_social(t) = Σ(s_i × E_i × R_i) / Σ(E_i × R_i)"""
     
     def calculate_macro_score(self, s_nhnn: float, s_news: float) -> float
+        """Calculate S_macro(t) = 0.7 × S_nhnn(t) + 0.3 × S_news(t)"""
+    
+    def validate_nhnn_score(self, s_nhnn: float) -> None
+        """Validate S_nhnn is in discrete set {-1, 0, 1}"""
     
     def calculate_raw_index(self, s_macro: float, s_social: float) -> float
+        """Calculate I_raw(t) = 0.6 × S_macro(t) + 0.4 × S_social(t)"""
     
     def calculate_final_vmsi(self, i_raw: float) -> float
+        """Calculate VMSI(t) = 50 × (I_raw(t) + 1) with boundary handling"""
     
     def apply_ema_smoothing(self, current_vmsi: float, previous_vmsi: float) -> float
+        """Apply VMSI_smoothed(t) = 0.2 × VMSI(t) + 0.8 × VMSI_smoothed(t-1)"""
+    
+    def validate_finite_values(self, *values: float) -> None
+        """Validate all calculations produce finite floating-point values"""
 ```
-
 **Implementation Details**:
-- Uses numpy arrays for vectorized calculations
-- Implements input validation for all mathematical operations
-- Handles edge cases (negative values, zero interactions)
-- Provides precise floating-point arithmetic with error handling
+- Uses numpy arrays for vectorized calculations with comprehensive input validation
+- Implements boundary condition handling for negative raw index values
+- Provides precise floating-point arithmetic with VMSICalculationError for non-finite results
+- Logs calculation details at DEBUG level and final results at INFO level for audit traceability
 
-### 2. Social Agent
+### 2. Social Agent with Enhanced Kafka Integration
 
-**Purpose**: Kafka consumer for sentiment-scored social media data
+**Purpose**: Robust Kafka consumer for sentiment-scored social media data with advanced fault tolerance
 
 **Key Interfaces**:
 ```python
 class SocialAgent:
-    def consume_sentiment_data(self) -> Dict[str, Any]
+    def connect_to_kafka(self, config: KafkaConfig) -> None
+        """Connect using confluent-kafka with connection pooling"""
     
-    def extract_phobert_scores(self, message_payload: Dict) -> np.ndarray
+    def consume_sentiment_data(self) -> Iterator[Dict[str, Any]]
+        """Consume from sentiment_scored_data topic with offset management"""
     
-    def calculate_interaction_weights(self, social_data: Dict) -> np.ndarray
+    def implement_retry_strategy(self, max_retries: int = 5, base_delay: float = 1.0) -> None
+        """Exponential backoff with jitter_factor=0.25"""
     
-    def process_social_metrics(self) -> float  # Returns S_social(t)
+    def setup_dead_letter_queue(self) -> None
+        """Configure DLQ for malformed/unparseable messages"""
+    
+    def extract_phobert_scores(self, message: Dict) -> Tuple[float, bool]
+        """Extract and validate sentiment.label, sentiment.confidence to [-1, 1]"""
+    
+    def extract_interaction_metrics(self, message: Dict) -> Tuple[int, int, int]
+        """Extract likes, shares, comments with non-negative validation"""
+    
+    def extract_credibility_factors(self, message: Dict) -> float
+        """Extract credibility from metadata [0.1, 1.0], default 0.5"""
+    
+    def process_message_batch(self, batch_size: int = 100) -> List[ProcessedMessage]
+        """Process messages in configurable batches with timeout controls"""
+    
+    def log_processing_statistics(self) -> None
+        """Log throughput, error rates, consumer lag every 5 seconds"""
+    
+    def handle_connection_failure(self) -> None
+        """Circuit breaker pattern with cached/neutral fallback values"""
 ```
 
 **Integration Points**:
-- Connects to existing Kafka topic `sentiment_scored_data`
-- Uses confluent-kafka library for consistency with existing infrastructure
-- Implements dead letter queue for failed message processing
-- Provides processing statistics and health monitoring
+- Connects to existing Kafka infrastructure using `confluent-kafka` library
+- Implements consumer group management with automatic rebalancing
+- Dead Letter Queue topology for failed message isolation
+- Circuit breaker pattern for connection failure protection
 
-### 3. Macro Agent
+### 3. Macro Agent with Advanced ChromaDB Integration
 
-**Purpose**: ChromaDB-based policy analysis and scoring
+**Purpose**: Semantic policy analysis with connection pooling and caching optimization
 
 **Key Interfaces**:
 ```python
 class MacroAgent:
-    def query_nhnn_policies(self, similarity_threshold: float = 0.7) -> List[Document]
+    def setup_connection_pool(self, pool_size: int = 5) -> None
+        """Managed ChromaDB connection pool with health monitoring"""
     
-    def analyze_policy_sentiment(self, policies: List[Document]) -> Tuple[int, str, float]
+    def implement_query_caching(self, ttl: int = 300) -> None
+        """Query result caching with configurable TTL"""
     
-    def generate_policy_summary(self, policy_text: str) -> str
+    def perform_semantic_search(self, similarity_threshold: float = 0.7, k: int = 5) -> List[Document]
+        """Semantic similarity queries against macro_policies collection"""
     
-    def get_macro_score(self) -> Dict[str, Any]  # Returns S_nhnn, summary, confidence
+    def analyze_policy_sentiment(self, documents: List[Document]) -> int
+        """Vietnamese keyword-based analysis returning {-1, 0, 1}"""
+    
+    def generate_vietnamese_summary(self, analysis_results: Dict) -> str
+        """Generate policy summaries with document count, similarity, confidence"""
+    
+    def handle_connection_failure(self) -> Tuple[int, str]
+        """Fallback to cached results when ChromaDB unavailable"""
+    
+    def log_performance_metrics(self) -> None
+        """Log cache hit rates, query times, connection health"""
+    
+    def handle_no_results(self) -> Tuple[int, str]
+        """Return neutral score (0) with Vietnamese explanation"""
 ```
 
 **Integration Points**:
-- Connects to existing ChromaDB collection `macro_policies`
-- Implements semantic similarity search with configurable thresholds
-- Uses connection pooling for performance optimization
-- Provides Vietnamese language policy summaries
+- Connects to existing ChromaDB `macro_policies` collection
+- Implements connection health monitoring with automatic failover
+- Query performance optimization through intelligent caching
+- Vietnamese language processing for policy document analysis
+### 4. Risk Synthesis Agent with Automated Assessment
 
-### 4. Risk Synthesis Agent
-
-**Purpose**: Orchestrates final VMSI calculation and risk assessment
+**Purpose**: Central coordination agent implementing risk assessment and atomic file operations
 
 **Key Interfaces**:
 ```python
 class RiskSynthesisAgent:
-    def receive_social_score(self, s_social: float) -> None
+    def validate_social_input(self, social_score: float) -> None
+        """Validate social scores with finite value checking"""
     
-    def receive_macro_score(self, s_nhnn: float, metadata: Dict) -> None
+    def validate_macro_input(self, macro_score: float, metadata: Dict) -> None
+        """Validate macro scores and policy metadata"""
     
-    def compute_final_vmsi(self) -> float
+    def coordinate_vmsi_calculation(self, social_data: Dict, macro_data: Dict) -> float
+        """Orchestrate complete VMSI pipeline with VMSI_Engine"""
     
-    def assess_risk_level(self, vmsi_smoothed: float) -> Dict[str, Any]
+    def assess_risk_levels(self, vmsi_smoothed: float) -> str
+        """Classify: ≤20 (extreme panic), ≥81 (extreme euphoria), normal (21-80)"""
     
-    def generate_vietnamese_warning(self, risk_level: str) -> str
+    def generate_vietnamese_warnings(self, risk_level: str, vmsi_value: float) -> str
+        """Generate risk warnings in Vietnamese for extreme conditions"""
     
-    def save_output_json(self, results: Dict) -> bool
+    def save_atomic_json(self, results: Dict, max_retries: int = 3) -> None
+        """Atomic file operations with backup creation and retry logic"""
+    
+    def validate_json_schema(self, output: Dict) -> None
+        """Validate required fields: vmsi_value, timestamp, status, risk_warning, component_scores"""
+    
+    def include_processing_metadata(self, timing: Dict, sources: Dict) -> Dict
+        """Include comprehensive metadata with timing and data source details"""
+    
+    def manage_ema_state(self, current_vmsi: float) -> float
+        """State management for EMA smoothing across calculation cycles"""
+    
+    def handle_file_operation_error(self, error: Exception) -> None
+        """Restore from backup and raise FileOperationError"""
 ```
 
 **Risk Assessment Logic**:
-- VMSI ≤ 20: High Risk (Negative sentiment warning)
-- VMSI ≥ 81: High Risk (Excessive optimism warning)  
-- 20 < VMSI < 81: Normal Range
-- Uses LLM for Vietnamese warning text generation
+- VMSI ≤ 20: Extreme panic conditions with Vietnamese risk warnings
+- VMSI ≥ 81: Extreme euphoria conditions with Vietnamese risk warnings  
+- 20 < VMSI < 81: Normal market conditions
+- Automated Vietnamese warning generation for extreme scenarios
 
-### 5. LangChain Multi-Agent Controller (MAC)
+### 5. Multi-Agent System Orchestration
 
-**Purpose**: Central orchestration and coordination of all agents
+**Purpose**: Central orchestration system implementing deterministic workflow execution
 
 **Key Interfaces**:
 ```python
-class MACSystem:
-    def initialize_agents(self) -> bool
-    
+class MultiAgentSystem:
     def execute_sequential_workflow(self) -> Dict[str, Any]
+        """Deterministic execution: Social_Agent → Macro_Agent → Risk_Synthesis_Agent → Output"""
     
-    def handle_agent_failure(self, agent_name: str, error: Exception) -> None
+    def enforce_timeout_limits(self, timeout: int = 30) -> None
+        """Configurable timeout limits with graceful degradation"""
     
-    def get_system_health(self) -> Dict[str, str]
+    def implement_circuit_breakers(self) -> None
+        """Circuit breaker patterns for Kafka, ChromaDB dependencies"""
     
-    def shutdown_gracefully(self) -> None
+    def provide_centralized_logging(self) -> None
+        """Structured logging with agent names, operation types, timing"""
+    
+    def handle_recoverable_errors(self, error: Exception, agent: str) -> None
+        """Retry logic with exponential backoff before workflow failure"""
+    
+    def monitor_agent_health(self) -> Dict[str, str]
+        """Periodic status checks with automatic restart capabilities"""
+    
+    def graceful_shutdown(self) -> None
+        """Proper cleanup of connections and resources"""
+    
+    def collect_workflow_metrics(self) -> Dict[str, float]
+        """End-to-end processing time, success rates, error classifications"""
+    
+    def manage_configuration(self, env_params: Dict) -> None
+        """Environment-based parameter loading with validation"""
+    
+    def implement_fallback_strategies(self) -> Dict[str, Any]
+        """Cached data or neutral baseline values for workflow failures"""
 ```
-
-**Orchestration Features**:
-- Implements LangChain agent framework for coordination
-- Supports parallel execution of Social and Macro agents when possible
-- Provides configurable timeouts (default 30 seconds per agent)
-- Exposes health check endpoint for monitoring
 
 ## Data Models
 
 ### Input Data Models
 
-**Social Media Message (from Kafka)**:
+**Social Media Message (from Kafka `sentiment_scored_data` topic)**:
 ```json
 {
   "sentiment": {
@@ -224,324 +314,270 @@ class MACSystem:
   }
 }
 ```
-
-**Policy Document (from ChromaDB)**:
+**Policy Document (from ChromaDB `macro_policies` collection)**:
 ```json
 {
-  "content": "Policy text content...",
+  "content": "Nội dung chính sách của Ngân hàng Nhà nước...",
   "metadata": {
     "doc_name": "nhnn_policy_2024_01.pdf",
     "upload_time": "2024-01-10T08:00:00Z",
     "chunk_id": "policy_001_chunk_01",
-    "confidence": 0.82
+    "confidence": 0.82,
+    "source": "nhnn_official"
   }
 }
 ```
 
 ### Internal Data Models
 
-**VMSI Calculation Intermediate Results**:
+**VMSI Calculation Pipeline Data**:
 ```python
 @dataclass
 class VMSICalculationData:
-    s_social: float          # Social score component
-    s_nhnn: float           # NHNN policy score (-1, 0, 1)
+    # Input validation results
+    phobert_scores_valid: bool
+    credibility_factors_valid: bool
+    interaction_weights: np.ndarray
+    
+    # Calculation components  
+    s_social: float          # Social sentiment score
+    s_nhnn: int              # NHNN policy score {-1, 0, 1}
     s_news: float           # News sentiment score
     s_macro: float          # Macro score (0.7 × S_nhnn + 0.3 × S_news)
     i_raw: float            # Raw index (0.6 × S_macro + 0.4 × S_social)
     vmsi_current: float     # Current VMSI (50 × (I_raw + 1))
     vmsi_smoothed: float    # EMA smoothed VMSI
+    
+    # Processing metadata
     processing_timestamp: datetime
+    calculation_errors: List[str]
+    intermediate_validations: Dict[str, bool]
 ```
 
 ### Output Data Models
 
-**Live VMSI Output (live_vmsi.json)**:
+**Live VMSI Output (`live_vmsi.json`)**:
 ```json
 {
   "vmsi_value": 67.5,
   "timestamp": "2024-01-15T10:30:00Z",
   "status": "normal|risk_low|risk_high",
-  "risk_warning": "Vietnamese risk assessment text...",
+  "risk_warning": "Cảnh báo rủi ro thị trường...", 
   "component_scores": {
     "s_social": 0.15,
     "s_macro": 0.25,
     "s_nhnn": 1,
+    "s_news": 0.3,
     "confidence": 0.78
   },
   "processing_metadata": {
-    "processing_time": 8.2,
+    "processing_time_seconds": 8.2,
     "agent_versions": {
       "social_agent": "1.0.0",
       "macro_agent": "1.0.0", 
-      "risk_agent": "1.0.0"
+      "risk_synthesis_agent": "1.0.0",
+      "vmsi_engine": "1.0.0"
     },
     "data_sources": {
       "kafka_messages_processed": 1247,
-      "policies_analyzed": 5
+      "policies_analyzed": 5,
+      "data_source_availability": {
+        "kafka_healthy": true,
+        "chromadb_healthy": true
+      }
+    },
+    "calculation_details": {
+      "ema_previous_value": 65.2,
+      "raw_index_value": 0.35,
+      "boundary_condition_applied": false
     }
   }
 }
-```
-
-## Error Handling
-
-### Error Classification and Response Strategies
-
-**Level 1 - Recoverable Errors**:
-- Kafka connection timeouts → Exponential backoff retry (2^n seconds, max 60s)
-- ChromaDB query failures → Fallback to cached results or neutral scoring
-- Individual message processing errors → Log and continue processing
-
-**Level 2 - Degraded Operation Errors**:
-- Social Agent failure → Use last known social score or default to 0
-- Macro Agent failure → Use neutral macro score (0)
-- Partial data availability → Compute VMSI with available components
-
-**Level 3 - Critical System Errors**:
-- VMSI Engine mathematical errors → Stop processing, alert operators
-- JSON output write failures → Implement backup file strategy
-- MAC System coordinator failure → Graceful shutdown with error logging
-
-### Circuit Breaker Implementation
-
-Based on [proven circuit breaker patterns](https://singhajit.com/circuit-breaker-pattern/), the system implements circuit breakers for external dependencies:
-
-**Circuit Breaker Configuration**:
-```python
-# Kafka Circuit Breaker
-kafka_breaker = CircuitBreaker(
-    failure_threshold=5,     # Trip after 5 consecutive failures
-    recovery_timeout=30,     # Try recovery after 30 seconds
-    expected_exception=KafkaException
-)
-
-# ChromaDB Circuit Breaker  
-chromadb_breaker = CircuitBreaker(
-    failure_threshold=3,     # Trip after 3 consecutive failures
-    recovery_timeout=20,     # Try recovery after 20 seconds
-    expected_exception=ConnectionError
-)
-```
-
-**States and Behavior**:
-- **Closed State**: Normal operation, all requests pass through
-- **Open State**: Circuit tripped, fail fast without calling external service
-- **Half-Open State**: Limited requests to test service recovery
-
-### Logging and Monitoring
-
-**Log Levels and Categories**:
-- **DEBUG**: Detailed processing information, message contents
-- **INFO**: Normal operation events, processing statistics
-- **WARNING**: Recoverable errors, degraded performance
-- **ERROR**: Component failures, data processing errors
-- **CRITICAL**: System-wide failures, data corruption
-
-**Monitoring Metrics**:
-- Messages processed per second (Social Agent)
-- Policy query response times (Macro Agent)
-- End-to-end pipeline processing time
-- Circuit breaker state transitions
-- Memory usage and system resources
-
-## Testing Strategy
-
-### Testing Framework Selection
-
-The system uses **Hypothesis** for property-based testing, which is [the standard Python library for this approach](https://hypothesis.readthedocs.io/en/latest/). Property-based testing is highly applicable to this system because:
-
-1. **Mathematical Engine**: Pure functions with well-defined mathematical properties
-2. **Data Processing**: Input validation and transformation logic
-3. **Agent Coordination**: State transitions and workflow invariants
-
-### Unit Testing Strategy
-
-**Component-Level Testing**:
-- **VMSI Engine**: Test mathematical formulas with known inputs/outputs
-- **Individual Agents**: Mock external dependencies (Kafka, ChromaDB)
-- **Data Models**: Validation logic and serialization/deserialization
-- **Error Handlers**: Exception scenarios and recovery mechanisms
-
-**Integration Testing**:
-- **Kafka Integration**: Test with embedded Kafka broker
-- **ChromaDB Integration**: Test with in-memory ChromaDB instance
-- **End-to-End Workflow**: Full pipeline with mock data sources
-
-### Property-Based Testing Strategy
-
-**Test Configuration**:
-- Minimum 100 iterations per property test (due to randomization)
-- Each property test references its design document property
-- Custom generators for financial data, Vietnamese text, and timestamps
-
-**Property Test Libraries**:
-```python
-# Primary testing framework
-pytest >= 7.0.0           # Test runner and fixtures
-hypothesis >= 6.100.0     # Property-based testing
-
-# Additional testing utilities  
-pytest-asyncio >= 0.21.0  # Async testing support
-freezegun >= 1.2.0        # Time mocking for reproducible tests
 ```
 
 ## Correctness Properties
 
 *A property is a characteristic or behavior that should hold true across all valid executions of a system—essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
 
-After analyzing all acceptance criteria for testability, the following properties have been identified as suitable for property-based testing. These properties focus on the mathematical engine, data processing logic, and agent coordination behaviors that exhibit meaningful variation across different inputs.
+Based on the prework analysis, the following properties have been identified as suitable for property-based testing. These properties focus on the mathematical engine, data processing logic, and agent coordination behaviors that exhibit meaningful variation across different inputs.
+### Property 1: Interaction Weight Logarithmic Formula Correctness
 
-### Property 1: VMSI Mathematical Formula Correctness
+*For any* non-negative integers likes, shares, and comments, the interaction weight calculation SHALL produce the exact result E_i = ln(1 + likes_i + shares_i + comments_i)
 
-*For any* valid arrays of PhoBERT scores, interaction weights, and credibility factors, the social score calculation SHALL produce the correct weighted sum: S_social(t) = Σ(PhoBERT_Score × Interaction_Weight × Credibility_Factor)
+**Validates: Requirements 1.1**
 
-**Validates: Requirements 1.1, 1.4**
+### Property 2: Input Validation for PhoBERT Scores and Credibility Factors
 
-### Property 2: Interaction Weight Logarithmic Formula
+*For any* input arrays, PhoBERT scores SHALL be validated within range [-1, 1] and credibility factors within range [0.1, 1.0], with appropriate validation errors for out-of-range values
 
-*For any* non-negative likes, shares, and comments values, the interaction weight SHALL be calculated using the exact formula: np.log(1 + likes + shares + comments)
+**Validates: Requirements 1.2**
 
-**Validates: Requirements 1.2, 1.3**
+### Property 3: Social Score Weighted Average Calculation
 
-### Property 3: Macro Score Weighted Average
+*For any* valid arrays of PhoBERT scores, interaction weights, and credibility factors, the social score SHALL equal Σ(s_i × E_i × R_i) / Σ(E_i × R_i), with division by zero returning 0.0
 
-*For any* valid S_nhnn and S_news scores, the macro score calculation SHALL apply the weighted formula: S_macro(t) = 0.7 × S_nhnn + 0.3 × S_news
+**Validates: Requirements 1.3**
+
+### Property 4: Macro Score Weighted Formula
+
+*For any* valid S_nhnn and S_news values, the macro score calculation SHALL apply the exact weighted formula S_macro(t) = 0.7 × S_nhnn(t) + 0.3 × S_news(t)
+
+**Validates: Requirements 1.4**
+
+### Property 5: NHNN Score Discrete Set Validation
+
+*For any* S_nhnn input value, the system SHALL validate that S_nhnn is exactly one of {-1, 0, 1} and reject any other values
 
 **Validates: Requirements 1.5**
 
-### Property 4: Raw Index Weighted Combination
+### Property 6: Raw Index Weighted Combination Formula
 
-*For any* valid S_macro and S_social scores, the raw index calculation SHALL apply the weighted formula: I_raw(t) = 0.6 × S_macro(t) + 0.4 × S_social(t)
+*For any* valid S_macro and S_social values, the raw index calculation SHALL apply the exact weighted formula I_raw(t) = 0.6 × S_macro(t) + 0.4 × S_social(t)
 
 **Validates: Requirements 1.6**
 
-### Property 5: VMSI Final Transformation and Boundary Handling
+### Property 7: VMSI Transformation and Boundary Condition Handling
 
-*For any* raw index value I_raw(t), if I_raw(t) is negative then VMSI SHALL equal 0, otherwise VMSI SHALL equal 50 × (I_raw(t) + 1)
+*For any* raw index value I_raw(t), if I_raw(t) < -1 then VMSI SHALL equal 0, otherwise VMSI SHALL equal 50 × (I_raw(t) + 1)
 
-**Validates: Requirements 1.7, 1.8**
+**Validates: Requirements 1.7**
 
-### Property 6: EMA Smoothing Formula
+### Property 8: Exponential Moving Average Smoothing Formula
 
-*For any* current VMSI and previous smoothed VMSI values, the smoothed result SHALL apply the exponential moving average formula: VMSI_smoothed(t) = 0.2 × VMSI(t) + 0.8 × VMSI_smoothed(t-1)
+*For any* current VMSI and previous smoothed VMSI values, the smoothed result SHALL apply the exact formula VMSI_smoothed(t) = 0.2 × VMSI(t) + 0.8 × VMSI_smoothed(t-1)
+
+**Validates: Requirements 1.8**
+
+### Property 9: Finite Value Validation and Error Handling
+
+*For any* intermediate calculation results, if non-finite values (NaN, infinity) are detected, the system SHALL raise VMSICalculationError
 
 **Validates: Requirements 1.9**
 
-### Property 7: Numpy Array Validation and Type Handling
+### Property 10: Exponential Backoff Retry Pattern Validation
 
-*For any* input to the VMSI Engine, all numpy array operations SHALL validate data types correctly and handle array operations without type conversion errors
+*For any* Kafka connection failure scenario, the retry delays SHALL follow the exponential backoff pattern with configurable base_delay, max_delay, and jitter_factor
 
-**Validates: Requirements 1.10, 1.11**
+**Validates: Requirements 2.3**
 
-### Property 8: Social Agent Message Processing
+### Property 11: Dead Letter Queue Message Routing
 
-*For any* valid Kafka message with sentiment data, the Social Agent SHALL extract PhoBERT scores correctly and call the VMSI Engine with the extracted data
+*For any* malformed or unparseable JSON message, the Social Agent SHALL route the message to the Dead Letter Queue and continue processing
 
-**Validates: Requirements 2.2, 2.3**
+**Validates: Requirements 2.4**
 
-### Property 9: Social Agent Error Handling Continuation
+### Property 12: PhoBERT Score Extraction and Validation
 
-*For any* invalid message format received by the Social Agent, the system SHALL log the error and continue processing subsequent messages without stopping
+*For any* message with sentiment data, the Social Agent SHALL extract sentiment.label and sentiment.confidence, validate the structure, and convert to range [-1, 1]
+
+**Validates: Requirements 2.5**
+
+### Property 13: Interaction Metrics Extraction with Validation
+
+*For any* message, the Social Agent SHALL extract likes, shares, comments with non-negative validation and apply default values of 0 for missing fields
+
+**Validates: Requirements 2.6**
+
+### Property 14: Credibility Factor Extraction with Range Validation
+
+*For any* message metadata, the Social Agent SHALL extract credibility factors, validate range [0.1, 1.0], and apply default fallback of 0.5
 
 **Validates: Requirements 2.7**
+### Property 15: Semantic Search Threshold Behavior
 
-### Property 10: Macro Agent Policy Sentiment Analysis
+*For any* similarity threshold configuration, the semantic search results SHALL return only documents with similarity scores at or above the threshold
 
-*For any* policy document analyzed, the Macro Agent SHALL return a valid S_nhnn score of exactly 1, -1, or 0 (when no policies found)
+**Validates: Requirements 3.3**
 
-**Validates: Requirements 3.2, 3.4**
+### Property 16: Document Retrieval Limiting
 
-### Property 11: Vietnamese Language Generation Consistency
+*For any* policy query, the system SHALL return at most k documents (default k=5) regardless of the number of qualifying documents
 
-*For any* policy analysis performed, the Macro Agent SHALL generate summaries in Vietnamese language, and for any risk scenario, the Risk Synthesis Agent SHALL generate warnings in Vietnamese
+**Validates: Requirements 3.4**
 
-**Validates: Requirements 3.3, 4.8**
+### Property 17: Vietnamese Policy Sentiment Analysis Output
 
-### Property 12: Confidence Level Range Validation
+*For any* Vietnamese policy document content, the sentiment analysis SHALL return exactly one discrete score from the set {-1, 0, 1}
 
-*For any* policy analysis performed, the confidence level returned SHALL always be within the valid range of 0.0 to 1.0 inclusive
+**Validates: Requirements 3.5, 3.6**
+
+### Property 18: Vietnamese Language Summary Generation
+
+*For any* policy analysis results, the Macro Agent SHALL generate summaries in Vietnamese language including document count, average similarity, and confidence metrics
 
 **Validates: Requirements 3.7**
 
-### Property 13: Risk Warning Generation Thresholds
+### Property 19: Social Score Input Validation
 
-*For any* VMSI smoothed value, if VMSI ≤ 20 or VMSI ≥ 81, then a Vietnamese risk warning SHALL be generated using LLM
+*For any* social score input to Risk Synthesis Agent, the system SHALL validate finite values and handle non-finite inputs with appropriate error handling
 
-**Validates: Requirements 4.3, 4.4**
+**Validates: Requirements 4.1**
 
-### Property 14: JSON Output Format Validation
+### Property 20: Macro Score and Metadata Validation  
 
-*For any* VMSI calculation result, the output JSON SHALL be valid standard JSON format and SHALL include all required fields: vmsi_value, timestamp, status, risk_warning, component_scores
+*For any* macro score and metadata input, the Risk Synthesis Agent SHALL validate data completeness and format correctness
 
-**Validates: Requirements 4.5, 4.6, 8.1, 8.2, 8.3**
+**Validates: Requirements 4.2**
 
-### Property 15: Sequential Workflow Execution Order
+### Property 21: Complete VMSI Pipeline Coordination
 
-*For any* workflow execution in the MAC System, the agent execution order SHALL follow the sequence: Social_Agent → Macro_Agent → Risk_Synthesis_Agent
+*For any* valid social and macro inputs, the Risk Synthesis Agent SHALL successfully coordinate with VMSI_Engine to compute final index values through the complete mathematical pipeline
+
+**Validates: Requirements 4.3**
+
+### Property 22: Risk Level Classification Thresholds
+
+*For any* VMSI smoothed value, the risk assessment SHALL classify as: ≤20 (extreme panic), ≥81 (extreme euphoria), or normal (21-80)
+
+**Validates: Requirements 4.4**
+
+### Property 23: Vietnamese Risk Warning Generation
+
+*For any* extreme risk condition (VMSI ≤20 or ≥81), the system SHALL generate risk warnings in Vietnamese language
+
+**Validates: Requirements 4.5**
+
+### Property 24: Atomic File Operations with Backup and Retry
+
+*For any* result data, the system SHALL perform atomic file writes with backup creation and implement retry logic up to 3 attempts
+
+**Validates: Requirements 4.6**
+
+### Property 25: JSON Schema Validation
+
+*For any* output data, the JSON SHALL be valid and include all required fields: vmsi_value, timestamp, status, risk_warning, component_scores
+
+**Validates: Requirements 4.7**
+
+### Property 26: EMA State Management Across Cycles
+
+*For any* sequence of VMSI calculations, the EMA state SHALL be properly maintained and applied across multiple calculation cycles
+
+**Validates: Requirements 4.9**
+
+### Property 27: File Operation Error Recovery
+
+*For any* file write failure, the system SHALL restore from backup and raise FileOperationError with detailed context
+
+**Validates: Requirements 4.10**
+
+### Property 28: Agent Operation Timeout Enforcement
+
+*For any* agent operation, if execution exceeds the configured timeout limit, the system SHALL implement graceful degradation
 
 **Validates: Requirements 5.2**
 
-### Property 16: Agent Failure Graceful Degradation
+### Property 29: Recoverable Error Retry Logic
 
-*For any* agent failure scenario, the MAC System SHALL log detailed error information and continue processing with available data from functioning agents
+*For any* recoverable error encountered by agents, the Multi-Agent System SHALL implement exponential backoff retry logic before declaring workflow failure
 
-**Validates: Requirements 5.3, 5.4**
+**Validates: Requirements 5.5**
 
-### Property 17: Exponential Backoff Retry Pattern
+### Property 30: Workflow Fallback Strategy Implementation
 
-*For any* Kafka connection failure, the retry delays SHALL follow an exponential backoff pattern, and any non-exponential backoff configuration SHALL be rejected
+*For any* complete workflow failure, the system SHALL implement fallback strategies using cached data or neutral baseline values
 
-**Validates: Requirements 6.4, 6.5**
-
-### Property 18: Semantic Search Threshold Behavior
-
-*For any* similarity threshold value configured, the semantic search results SHALL change appropriately based on the threshold, with stricter thresholds returning fewer results
-
-**Validates: Requirements 7.2**
-
-### Property 19: Result Limiting Consistency
-
-*For any* policy query performed, the system SHALL return exactly the configured number of top-k results (default k=5), never exceeding the limit
-
-**Validates: Requirements 7.5**
-
-### Property 20: File Write Retry Mechanism
-
-*For any* file write failure, the system SHALL retry the write operation exactly 3 times before giving up, and SHALL create a backup before overwriting existing files
-
-**Validates: Requirements 8.4, 8.5**
-
-### Property 21: ISO 8601 Timestamp Format Consistency
-
-*For any* timestamp field in the system output, the format SHALL be ISO 8601 with UTC timezone
-
-**Validates: Requirements 8.8**
-
-### Property 22: Circuit Breaker State Transition Correctness
-
-*For any* external service failure pattern, the circuit breaker SHALL transition through states (Closed → Open → Half-Open) according to the configured failure thresholds
-
-**Validates: Requirements 9.1**
-
-### Property 23: Error Logging Severity Classification
-
-*For any* error or exception generated, the appropriate severity level SHALL be assigned (DEBUG, INFO, WARNING, ERROR, CRITICAL) based on the error type and impact
-
-**Validates: Requirements 9.3, 9.7**
-
-### Property 24: Memory Usage Monitoring and Alerting
-
-*For any* system memory usage level, when usage reaches 80% threshold, an alert SHALL be generated
-
-**Validates: Requirements 10.3**
-
-### Property 25: Numpy Vectorized Operations Optimization
-
-*For any* numpy calculation in the VMSI Engine, vectorized operations SHALL be used instead of iterative loops for performance optimization
-
-**Validates: Requirements 10.6**
-
+**Validates: Requirements 5.10**
 ## Error Handling
 
 ### Comprehensive Error Management Strategy
@@ -550,306 +586,430 @@ The system implements a multi-layered error handling approach designed to mainta
 
 #### Error Classification Framework
 
-**Transient Errors (Recoverable)**:
-- Network connectivity issues (Kafka, ChromaDB)
-- Temporary service unavailability
-- Resource contention (memory, CPU)
+**Transient Errors (Recoverable with Retry)**:
+- Network connectivity issues (Kafka brokers, ChromaDB connections)
+- Temporary service unavailability or resource contention
 - Timeout exceptions from external services
+- Message processing queue backlog
 
-*Handling Strategy*: Exponential backoff retry with circuit breaker protection
+*Handling Strategy*: Exponential backoff retry with configurable parameters (max_retries=5, base_delay=1.0s, max_delay=60.0s, jitter_factor=0.25) and circuit breaker protection
 
 **Data Quality Errors (Partially Recoverable)**:
-- Invalid message formats from Kafka
-- Corrupted or incomplete policy documents
-- Missing required fields in data payloads
-- Invalid numerical values (NaN, infinity)
+- Invalid message formats from Kafka (malformed JSON, missing fields)
+- Corrupted or incomplete policy documents from ChromaDB
+- Invalid numerical values (NaN, infinity, out-of-range values)
+- PhoBERT scores outside [-1, 1] range or credibility factors outside [0.1, 1.0]
 
-*Handling Strategy*: Log error, skip problematic data, continue processing with remaining valid data
+*Handling Strategy*: Route to Dead Letter Queue, log detailed error context, skip problematic data, continue processing with remaining valid data
 
 **System Integration Errors (Degraded Operation)**:
-- Social Agent failure → Use last known social score or default to 0
-- Macro Agent failure → Use neutral macro score (S_nhnn = 0)
-- ChromaDB collection unavailable → Use cached policy results
-- Kafka topic unavailable → Use historical data if available
+- Social Agent complete failure → Use last known social score or default to neutral (0)
+- Macro Agent complete failure → Use neutral macro score (S_nhnn = 0)
+- ChromaDB collection unavailable → Use cached policy results with TTL fallback
+- Kafka topic unavailable → Use historical data if available within time window
 
-*Handling Strategy*: Graceful degradation with fallback values and detailed logging
+*Handling Strategy*: Graceful degradation with fallback values, comprehensive logging, and detailed status reporting
 
-**Critical System Errors (Stop Operation)**:
-- VMSI mathematical engine errors (division by zero, array dimension mismatch)
-- Configuration validation failures
-- File system errors preventing JSON output
+**Critical System Errors (Emergency Shutdown)**:
+- VMSI mathematical engine errors (array dimension mismatch, mathematical domain errors)
+- Configuration validation failures during system initialization
+- File system errors preventing JSON output generation
 - Memory exhaustion or resource allocation failures
+- Circuit breaker cascade failures across multiple services
 
-*Handling Strategy*: Immediate shutdown with comprehensive error reporting
+*Handling Strategy*: Immediate graceful shutdown with state preservation, comprehensive error reporting, and operator alerting
 
 ### Circuit Breaker Implementation Details
 
-The system uses [PyBreaker](https://github.com/danielfm/pybreaker) for implementing circuit breaker patterns:
+The system implements circuit breaker patterns using configurable thresholds and recovery strategies:
 
 ```python
-from pybreaker import CircuitBreaker
+from utils.circuit_breaker import CircuitBreaker
 
 # Kafka Circuit Breaker Configuration
 kafka_breaker = CircuitBreaker(
-    fail_max=5,              # Trip after 5 consecutive failures
-    reset_timeout=30,        # Attempt reset after 30 seconds
-    exclude=[ValueError]     # Don't count data validation errors
+    failure_threshold=5,     # Trip after 5 consecutive failures
+    recovery_timeout=30,     # Attempt reset after 30 seconds
+    expected_exception=(KafkaException, ConnectionError),
+    half_open_max_calls=3    # Limited calls during recovery testing
 )
 
 # ChromaDB Circuit Breaker Configuration
 chromadb_breaker = CircuitBreaker(
-    fail_max=3,              # Trip after 3 consecutive failures
-    reset_timeout=20,        # Attempt reset after 20 seconds
-    exclude=[DataValidationError]
+    failure_threshold=3,     # Trip after 3 consecutive failures  
+    recovery_timeout=20,     # Attempt reset after 20 seconds
+    expected_exception=(ConnectionError, TimeoutError),
+    half_open_max_calls=2    # Limited calls during recovery testing
 )
 ```
 
-**Circuit Breaker States and Behavior**:
+**Circuit Breaker States and Transitions**:
 
 1. **Closed State (Normal Operation)**:
    - All requests pass through to external services
-   - Failure counter resets on successful calls
-   - Monitor failure rate continuously
+   - Failure counter increments on exceptions, resets on success
+   - Monitor failure rate and consecutive failure patterns
 
 2. **Open State (Service Protection)**:
    - All requests fail immediately without calling external service
-   - Return cached data or default values
-   - Significantly reduces system load and response time
+   - Return cached data, neutral values, or raise ServiceUnavailableError
+   - Significantly reduces system load and response latency
 
 3. **Half-Open State (Recovery Testing)**:
-   - Limited number of test requests allowed through
-   - If requests succeed, circuit moves to Closed state
-   - If requests fail, circuit returns to Open state
+   - Limited number of test requests (2-3) allowed through to external service
+   - If test requests succeed, circuit transitions to Closed state
+   - If test requests fail, circuit returns to Open state with extended timeout
 
-### Error Recovery Mechanisms
+### Logging and Monitoring Strategy
 
-**Automated Recovery Procedures**:
-
-1. **Kafka Connection Recovery**:
-   - Automatic consumer group rebalancing
-   - Offset position recovery from last committed state
-   - Dead letter queue processing for failed messages
-
-2. **ChromaDB Connection Recovery**:
-   - Connection pool refresh and validation
-   - Query result caching with TTL for service unavailability
-   - Fallback to neutral policy scoring
-
-3. **Agent Failure Recovery**:
-   - Health check endpoints for agent status monitoring
-   - Automatic agent restart for transient failures
-   - State preservation for stateful agents
-
-### Logging Strategy
-
-**Structured Logging with Context**:
+**Structured Logging with Contextual Information**:
 ```python
 import structlog
+from datetime import datetime
 
 logger = structlog.get_logger()
 
-# Example structured log entry
+# Example comprehensive log entry
 logger.error(
-    "vmsi_calculation_failed",
-    agent="risk_synthesis_agent",
-    vmsi_raw=i_raw_value,
-    error_type="mathematical_error",
+    "vmsi_calculation_pipeline_failure",
+    agent_name="risk_synthesis_agent",
+    operation_id="vmsi_calc_20240115_103045",
+    vmsi_raw_value=i_raw_value,
+    error_type="mathematical_domain_error", 
+    error_details=str(exception),
     stack_trace=traceback.format_exc(),
     processing_timestamp=datetime.utcnow().isoformat(),
-    message_id=message_id
+    correlation_id=correlation_id,
+    input_data_hash=hashlib.sha256(str(input_data).encode()).hexdigest()[:16],
+    system_resources={
+        "memory_usage_mb": psutil.virtual_memory().used // (1024*1024),
+        "cpu_usage_percent": psutil.cpu_percent()
+    }
 )
 ```
 
-**Log Aggregation and Analysis**:
-- All logs include correlation IDs for distributed tracing
-- Error patterns are monitored for early failure detection
-- Performance metrics are extracted from structured logs
-- Alert thresholds based on error frequency and severity
+**Performance and Health Metrics Collection**:
+- End-to-end processing latency monitoring (target: ≤10 seconds)
+- Agent-level execution time breakdown and bottleneck identification
+- Message processing throughput rates (target: 1000 posts/minute capacity)
+- Error frequency analysis and trend detection
+- Circuit breaker state transitions and recovery patterns
+- Resource utilization monitoring (memory, CPU, connection pools)
 
 ## Testing Strategy
 
-### Comprehensive Testing Approach
+### Comprehensive Testing Framework
 
-The testing strategy combines multiple testing methodologies to ensure comprehensive coverage and system reliability:
+The testing strategy combines multiple methodologies to ensure comprehensive coverage, system reliability, and mathematical correctness:
 
-**1. Property-Based Testing (Primary)**:
-- **Framework**: Hypothesis 6.100+ for Python property-based testing
-- **Coverage**: Mathematical computations, data processing logic, agent coordination
-- **Configuration**: Minimum 100 iterations per property test
-- **Custom Generators**: Financial data, Vietnamese text, timestamp generation
+**1. Property-Based Testing (Primary Focus)**:
+- **Framework**: Hypothesis 6.100+ for robust property-based testing
+- **Mathematical Coverage**: VMSI formulas, input validation, data transformations
+- **Agent Logic Coverage**: Message processing, error handling, state management
+- **Configuration**: Minimum 100 iterations per property test with custom generators
 
-**2. Unit Testing (Complementary)**:
-- **Framework**: pytest 7.0+ with fixtures for component isolation
-- **Coverage**: Specific examples, edge cases, error conditions
-- **Mocking Strategy**: External dependencies (Kafka, ChromaDB, LLM services)
+**2. Unit Testing (Complementary Coverage)**:
+- **Framework**: pytest 7.0+ with comprehensive fixtures and mocking
+- **Component Isolation**: Individual agent testing with mocked dependencies
+- **Edge Case Validation**: Boundary conditions, error scenarios, configuration edge cases
+- **Mock Strategy**: Kafka (using embedded broker), ChromaDB (in-memory), external services
 
-**3. Integration Testing (Infrastructure)**:
-- **Kafka Integration**: Embedded Kafka broker for testing
-- **ChromaDB Integration**: In-memory ChromaDB instance for testing
-- **End-to-End Workflows**: Complete pipeline testing with synthetic data
-
-**4. Performance Testing (Validation)**:
-- **Load Testing**: 1000 posts/minute processing capacity validation
-- **Latency Testing**: <10 second end-to-end processing verification
-- **Memory Testing**: 80% threshold monitoring and alerting verification
-
+**3. Integration Testing (Infrastructure Validation)**:
+- **Kafka Integration**: Embedded Kafka broker with real message processing
+- **ChromaDB Integration**: In-memory ChromaDB with actual semantic search
+- **End-to-End Workflows**: Complete pipeline testing with synthetic Vietnamese data
+- **Performance Validation**: Throughput and latency benchmarking under load
 ### Property-Based Testing Implementation
 
-**Test Configuration and Setup**:
+**Test Configuration and Dependencies**:
+```python
+# Testing framework dependencies
+pytest >= 7.0.0           # Test runner with advanced fixtures
+hypothesis >= 6.100.0     # Property-based testing framework
+pytest-asyncio >= 0.21.0  # Async agent testing support
+freezegun >= 1.2.0        # Time mocking for reproducible tests
+pytest-mock >= 3.10.0     # Enhanced mocking capabilities
+
+# Test data generation
+faker >= 18.0.0           # Synthetic data generation
+hypothesis-vietnamese >= 1.0.0  # Vietnamese text generators (custom)
+```
+
+**Custom Generators for Financial and Vietnamese Data**:
 ```python
 from hypothesis import given, strategies as st, settings
 from hypothesis.extra.numpy import arrays
 import numpy as np
 
-# Custom generators for financial data
 @st.composite
-def social_media_data(draw):
+def vietnamese_social_media_data(draw):
+    """Generate realistic Vietnamese social media messages"""
     num_posts = draw(st.integers(min_value=1, max_value=1000))
+    
+    # PhoBERT sentiment scores [-1, 1]
     phobert_scores = draw(arrays(
         dtype=np.float32,
         shape=(num_posts,),
-        elements=st.floats(min_value=-1.0, max_value=1.0)
+        elements=st.floats(min_value=-1.0, max_value=1.0, allow_nan=False)
     ))
+    
+    # Social media interaction metrics
     likes = draw(arrays(
         dtype=np.int32,
         shape=(num_posts,),
-        elements=st.integers(min_value=0, max_value=10000)
+        elements=st.integers(min_value=0, max_value=50000)
     ))
     shares = draw(arrays(
-        dtype=np.int32,
+        dtype=np.int32, 
         shape=(num_posts,),
-        elements=st.integers(min_value=0, max_value=1000)
+        elements=st.integers(min_value=0, max_value=5000)
     ))
     comments = draw(arrays(
         dtype=np.int32,
         shape=(num_posts,),
-        elements=st.integers(min_value=0, max_value=500)
+        elements=st.integers(min_value=0, max_value=2000)
     ))
+    
+    # Credibility factors [0.1, 1.0]
     credibility = draw(arrays(
         dtype=np.float32,
         shape=(num_posts,),
-        elements=st.floats(min_value=0.1, max_value=1.0)
+        elements=st.floats(min_value=0.1, max_value=1.0, allow_nan=False)
     ))
+    
     return phobert_scores, likes, shares, comments, credibility
 
-# Property test example with tag annotation
-@given(social_media_data())
-@settings(max_examples=100)
-def test_vmsi_social_score_calculation(social_data):
+@st.composite  
+def nhnn_policy_documents(draw):
+    """Generate realistic NHNN policy document data"""
+    doc_count = draw(st.integers(min_value=1, max_value=10))
+    
+    policy_sentiments = draw(st.lists(
+        st.sampled_from([-1, 0, 1]),  # Discrete NHNN scores
+        min_size=doc_count,
+        max_size=doc_count
+    ))
+    
+    # Vietnamese policy text snippets
+    vietnamese_content = draw(st.lists(
+        st.text(
+            alphabet="aăâbcdđeêfghijklmnoôơpqrstuưvwxyz AĂÂBCDĐEÊFGHIJKLMNOÔƠPQRSTUƯVWXYZ.,!?",
+            min_size=100,
+            max_size=1000
+        ),
+        min_size=doc_count,
+        max_size=doc_count
+    ))
+    
+    confidence_scores = draw(st.lists(
+        st.floats(min_value=0.0, max_value=1.0, allow_nan=False),
+        min_size=doc_count,
+        max_size=doc_count  
+    ))
+    
+    return policy_sentiments, vietnamese_content, confidence_scores
+
+# Property test example with comprehensive tagging
+@given(vietnamese_social_media_data())
+@settings(max_examples=100, deadline=5000)  # 5 second timeout per test
+def test_vmsi_social_score_mathematical_correctness(social_data):
     """
-    Feature: multi-agent-system, Property 1: VMSI Mathematical Formula Correctness
+    Feature: multi-agent-system, Property 3: Social Score Weighted Average Calculation
     For any valid arrays of PhoBERT scores, interaction weights, and credibility factors,
-    the social score calculation SHALL produce the correct weighted sum.
+    the social score SHALL equal Σ(s_i × E_i × R_i) / Σ(E_i × R_i), with division by zero returning 0.0
     """
     phobert_scores, likes, shares, comments, credibility = social_data
     
+    # Initialize VMSI Engine
     engine = VMSIEngine()
     
-    # Calculate interaction weights using the specified formula
+    # Calculate interaction weights using logarithmic formula
     interaction_weights = np.log(1 + likes + shares + comments)
     
-    # Compute social score
+    # Execute social score calculation
     result = engine.calculate_social_score(
         phobert_scores, interaction_weights, credibility
     )
     
-    # Verify mathematical correctness
-    expected = np.sum(phobert_scores * interaction_weights * credibility)
+    # Manual verification of mathematical correctness
+    numerator = np.sum(phobert_scores * interaction_weights * credibility)
+    denominator = np.sum(interaction_weights * credibility)
     
-    assert np.isclose(result, expected, rtol=1e-6), \
+    expected = numerator / denominator if denominator != 0 else 0.0
+    
+    # Assertions with appropriate tolerance
+    assert np.isclose(result, expected, rtol=1e-6, atol=1e-10), \
         f"Social score calculation incorrect: {result} != {expected}"
     assert np.isfinite(result), "Social score must be finite"
+    assert isinstance(result, float), "Social score must be float type"
+
+@given(st.floats(min_value=-2.0, max_value=2.0, allow_nan=False),
+       st.floats(min_value=-2.0, max_value=2.0, allow_nan=False))
+@settings(max_examples=100)
+def test_vmsi_raw_index_weighted_combination(s_macro, s_social):
+    """
+    Feature: multi-agent-system, Property 6: Raw Index Weighted Combination Formula
+    For any valid S_macro and S_social values, the raw index calculation
+    SHALL apply the exact weighted formula I_raw(t) = 0.6 × S_macro(t) + 0.4 × S_social(t)
+    """
+    engine = VMSIEngine()
+    
+    # Execute raw index calculation
+    result = engine.calculate_raw_index(s_macro, s_social)
+    
+    # Verify exact mathematical formula
+    expected = 0.6 * s_macro + 0.4 * s_social
+    
+    assert np.isclose(result, expected, rtol=1e-10), \
+        f"Raw index formula incorrect: {result} != {expected}"
+    assert np.isfinite(result), "Raw index must be finite"
 ```
 
-### Integration Test Strategy
+### Integration Testing Strategy
 
-**Embedded Service Testing**:
+**Embedded Service Testing with Real Data Flow**:
 ```python
 import pytest
 from testcontainers.kafka import KafkaContainer
 from testcontainers.compose import DockerCompose
+import chromadb
 
 @pytest.fixture(scope="session")
-def kafka_service():
+def kafka_test_environment():
+    """Set up embedded Kafka for integration testing"""
     with KafkaContainer() as kafka:
+        # Pre-populate with Vietnamese test data
+        producer = kafka.get_producer()
+        test_messages = generate_vietnamese_test_messages(1000)
+        
+        for message in test_messages:
+            producer.send("sentiment_scored_data", message)
+        
         yield kafka
 
 @pytest.fixture(scope="session")  
-def chromadb_service():
-    # In-memory ChromaDB for testing
-    import chromadb
+def chromadb_test_environment():
+    """Set up in-memory ChromaDB with Vietnamese policy documents"""
     client = chromadb.Client()
     collection = client.create_collection("test_macro_policies")
-    yield client, collection
-
-def test_end_to_end_pipeline(kafka_service, chromadb_service):
-    """Integration test for complete VMSI calculation pipeline"""
-    mac_system = MACSystem(
-        kafka_broker=kafka_service.get_bootstrap_server(),
-        chromadb_client=chromadb_service[0]
+    
+    # Add Vietnamese policy documents for testing
+    vietnamese_policies = load_vietnamese_test_policies()
+    collection.add(
+        documents=vietnamese_policies["content"],
+        metadatas=vietnamese_policies["metadata"],
+        ids=vietnamese_policies["ids"]
     )
     
-    # Send test data to Kafka
-    test_sentiment_data = {
-        "sentiment": {"label": "Positive", "confidence": 0.8},
-        "interactions": {"likes": 100, "shares": 20, "comments": 15}
-    }
+    yield client, collection
+
+def test_complete_vmsi_pipeline_with_vietnamese_data(kafka_test_environment, chromadb_test_environment):
+    """Integration test for complete VMSI calculation with Vietnamese data"""
     
-    # Execute pipeline
+    # Initialize Multi-Agent System with test environments
+    mac_system = MultiAgentSystem(
+        kafka_config=kafka_test_environment.get_config(),
+        chromadb_client=chromadb_test_environment[0],
+        vietnamese_processing=True
+    )
+    
+    # Execute complete workflow
+    start_time = time.time()
     result = mac_system.execute_sequential_workflow()
+    processing_time = time.time() - start_time
     
-    # Verify output format and content
+    # Verify performance requirements
+    assert processing_time <= 10.0, f"Processing took {processing_time}s, should be ≤10s"
+    
+    # Verify output structure and content
     assert "vmsi_value" in result
     assert 0 <= result["vmsi_value"] <= 100
     assert result["status"] in ["normal", "risk_low", "risk_high"]
+    assert "risk_warning" in result
+    
+    # Verify Vietnamese language content
+    if result["vmsi_value"] <= 20 or result["vmsi_value"] >= 81:
+        assert result["risk_warning"] is not None
+        assert contains_vietnamese_text(result["risk_warning"])
+    
+    # Verify component scores
+    assert "component_scores" in result
+    assert "s_social" in result["component_scores"]
+    assert "s_macro" in result["component_scores"]
+    assert "s_nhnn" in result["component_scores"] 
+    assert result["component_scores"]["s_nhnn"] in [-1, 0, 1]
 ```
 
 ### Performance and Load Testing
 
-**Capacity Validation**:
+**Capacity and Throughput Validation**:
 ```python
-def test_throughput_capacity():
-    """Validate system handles 1000 posts/minute capacity"""
-    mac_system = MACSystem()
+def test_throughput_capacity_1000_posts_per_minute():
+    """Validate system handles 1000 posts/minute processing capacity"""
+    mac_system = MultiAgentSystem()
     
-    # Generate 1000 test messages
-    test_messages = [generate_test_message() for _ in range(1000)]
+    # Generate 1000 realistic Vietnamese test messages
+    test_messages = generate_vietnamese_social_media_messages(1000)
     
     start_time = time.time()
     
+    # Process all messages through complete pipeline
+    results = []
     for message in test_messages:
-        mac_system.process_message(message)
+        result = mac_system.process_single_message(message)
+        results.append(result)
     
     total_time = time.time() - start_time
     
-    # Verify processing capacity
-    assert total_time <= 60, f"Processing took {total_time}s, should be ≤60s"
+    # Verify throughput requirement
+    assert total_time <= 60, f"Processing 1000 posts took {total_time}s, should be ≤60s"
     
-    # Verify output quality
-    assert mac_system.get_processed_count() == 1000
+    # Verify all results are valid
+    for result in results:
+        assert 0 <= result["vmsi_value"] <= 100
+        assert np.isfinite(result["vmsi_value"])
+
+def test_memory_usage_under_load():
+    """Validate memory usage stays within acceptable limits"""
+    import psutil
+    import gc
+    
+    mac_system = MultiAgentSystem()
+    
+    initial_memory = psutil.virtual_memory().used
+    
+    # Process large batch to test memory management
+    for batch_num in range(100):  # 100 batches of 100 messages each
+        batch_messages = generate_vietnamese_social_media_messages(100)
+        mac_system.process_message_batch(batch_messages)
+        
+        # Force garbage collection
+        gc.collect()
+        
+        current_memory = psutil.virtual_memory().used
+        memory_increase_mb = (current_memory - initial_memory) / (1024 * 1024)
+        
+        # Memory should not increase significantly
+        assert memory_increase_mb < 100, f"Memory increased by {memory_increase_mb}MB"
+
+def test_concurrent_agent_processing():
+    """Test parallel processing capabilities of Social and Macro agents"""
+    import asyncio
+    
+    async def test_concurrent_execution():
+        mac_system = MultiAgentSystem()
+        
+        # Start both agents concurrently
+        social_task = asyncio.create_task(mac_system.social_agent.process_batch())
+        macro_task = asyncio.create_task(mac_system.macro_agent.analyze_policies())
+        
+        start_time = time.time()
+        social_result, macro_result = await asyncio.gather(social_task, macro_task)
+        concurrent_time = time.time() - start_time
+        
+        # Should be faster than sequential execution
+        sequential_time = test_sequential_execution_time()
+        assert concurrent_time < sequential_time * 0.8, "Concurrent execution should be significantly faster"
+    
+    asyncio.run(test_concurrent_execution())
 ```
-
-### Test Coverage Requirements
-
-**Property Test Coverage**:
-- All 25 identified correctness properties must have corresponding property-based tests
-- Each test runs minimum 100 iterations
-- Tests must include tag annotation referencing design property
-- Custom generators for domain-specific data (Vietnamese text, financial metrics)
-
-**Unit Test Coverage**:
-- Individual component testing with mocked dependencies
-- Error condition testing (invalid inputs, edge cases)
-- Configuration validation testing
-
-**Integration Test Coverage**:
-- Kafka producer/consumer integration
-- ChromaDB query and retrieval
-- LangChain agent coordination
-- Health check endpoints
-
-**Performance Test Coverage**:
-- Throughput capacity (1000 posts/minute)
-- Processing latency (<10 seconds end-to-end)
-- Memory usage monitoring (80% threshold alerts)
-- Horizontal scaling verification

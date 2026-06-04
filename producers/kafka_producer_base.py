@@ -48,7 +48,6 @@ class BaseKafkaProducer:
                 'retry.backoff.ms': self.retry_backoff * 1000,
                 'batch.size': 16384,
                 'linger.ms': 10,
-                'buffer.memory': 33554432,
                 'request.timeout.ms': 30000,
                 'delivery.timeout.ms': 60000,
                 'compression.type': 'snappy'
